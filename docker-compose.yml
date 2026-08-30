@@ -1,0 +1,18 @@
+services:
+  hub-gerencial:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    image: amura/hub-gerencial:latest
+    container_name: amura-hub-gerencial
+    restart: unless-stopped
+    ports:
+      - "5174:80"
+    environment:
+      - NODE_ENV=production
+    healthcheck:
+      test: ["CMD", "wget", "-qO-", "http://localhost/healthz"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 10s
