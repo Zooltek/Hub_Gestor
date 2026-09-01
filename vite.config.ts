@@ -1,6 +1,6 @@
 import path from "node:path";
 import tailwindcss from "@tailwindcss/vite";
-import { defineConfig } from "vite";
+import { defineConfig } from "vitest/config";
 import react from "@vitejs/plugin-react";
 
 const port = Number(process.env.PORT ?? "5174");
