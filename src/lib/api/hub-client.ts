@@ -383,14 +383,83 @@ export async function fetchProductBatchById(batchId: string): Promise<{ batch: P
       };
 
       const mappedItems: ProductChangeDto[] = rawItems.map((item: any) => {
-        const incoming = item.incomingSnapshot || {};
+        const incoming = item.incomingSnapshot || item.snapshot || item.rawSnapshot || {};
         const saved = item.savedSnapshot || {};
-        const shared = incoming.shared || saved.shared || {};
-        const variations = incoming.variations || saved.variations || [];
+        const shared = incoming.shared || saved.shared || incoming || saved || item.effectiveSharedSnapshot || {};
+        const variations: any[] = incoming.variations || saved.variations || incoming.itens || saved.itens || item.effectiveVariations || item.variations || [];
 
-        const title = shared.descricaoProduto || shared.descricao || shared.nome || shared.title || `Produto ${item.reference || item.sku || ""}`;
-        const price = parseFloat(String(shared.precoVenda || shared.preco || shared.price || variations[0]?.precoVenda || "0").replace(",", ".")) || 0;
-        const stock = variations.reduce((acc: number, v: any) => acc + (parseInt(String(v.estoque || v.stock || v.quantidade || "0"), 10) || 0), 0);
+        const title =
+          shared.descricaoProduto ||
+          shared.descricao ||
+          shared.nome ||
+          shared.title ||
+          incoming.descricaoProduto ||
+          incoming.descricao ||
+          incoming.nome ||
+          saved.descricaoProduto ||
+          saved.descricao ||
+          saved.nome ||
+          item.title ||
+          `Produto ${item.reference || item.sku || ""}`;
+
+        // Extracao precisa de Preco
+        const rawPrice =
+          shared.precoVenda ??
+          shared.preco ??
+          shared.price ??
+          variations[0]?.precoVenda ??
+          variations[0]?.preco ??
+          variations[0]?.price ??
+          incoming.precoVenda ??
+          incoming.preco ??
+          incoming.price ??
+          saved.precoVenda ??
+          saved.preco ??
+          saved.price ??
+          item.precoVenda ??
+          item.preco ??
+          item.price ??
+          "0";
+
+        let price = 0;
+        if (typeof rawPrice === "number") {
+          price = rawPrice;
+        } else if (typeof rawPrice === "string") {
+          price = parseFloat(rawPrice.replace(",", ".")) || 0;
+        }
+
+        // Extracao precisa de Estoque
+        let stock = 0;
+        if (Array.isArray(variations) && variations.length > 0) {
+          stock = variations.reduce((acc: number, v: any) => {
+            const vStock = v.estoque ?? v.stock ?? v.quantidade ?? v.qty ?? 0;
+            return acc + (typeof vStock === "number" ? vStock : parseInt(String(vStock), 10) || 0);
+          }, 0);
+        } else {
+          const directStock =
+            incoming.estoque ??
+            saved.estoque ??
+            shared.estoque ??
+            item.estoque ??
+            item.stock ??
+            0;
+          stock = typeof directStock === "number" ? directStock : parseInt(String(directStock), 10) || 0;
+        }
+
+        // Se ainda for 0, inspeciona o diff de alteracoes
+        if (price === 0 && Array.isArray(item.diff)) {
+          const priceDiff = item.diff.find((d: any) => String(d.path || d.field || "").toLowerCase().includes("preco"));
+          if (priceDiff?.to || priceDiff?.val || priceDiff?.value) {
+            price = parseFloat(String(priceDiff.to || priceDiff.val || priceDiff.value).replace(",", ".")) || 0;
+          }
+        }
+
+        if (stock === 0 && Array.isArray(item.diff)) {
+          const stockDiff = item.diff.find((d: any) => String(d.path || d.field || "").toLowerCase().includes("estoque"));
+          if (stockDiff?.to || stockDiff?.val || stockDiff?.value) {
+            stock = parseInt(String(stockDiff.to || stockDiff.val || stockDiff.value), 10) || 0;
+          }
+        }
 
         const statusMap: Record<number, string> = {
           0: "Sem alteração",
@@ -413,7 +482,7 @@ export async function fetchProductBatchById(batchId: string): Promise<{ batch: P
           status: item.status ?? 0,
           statusLabel,
           title,
-          category: shared.nomeCategoria || shared.categoria || "Geral",
+          category: shared.nomeCategoria || shared.categoria || incoming.nomeCategoria || "Geral",
           price,
           stock,
           dispatchTarget: item.dispatchTargets?.join(", ") || "Shopify",
@@ -423,7 +492,7 @@ export async function fetchProductBatchById(batchId: string): Promise<{ batch: P
           diff: Array.isArray(item.diff) ? item.diff : [],
           savedSnapshot: item.savedSnapshot,
           incomingSnapshot: item.incomingSnapshot,
-          variationsCount: variations.length || 1,
+          variationsCount: Array.isArray(variations) && variations.length > 0 ? variations.length : 1,
           createdAtUtc: item.createdAt || batchObj.createdAt || new Date().toISOString(),
         };
       });
