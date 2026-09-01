@@ -1,10 +1,10 @@
 import { useState } from "react";
 import { Outlet, useLocation, Link } from "react-router-dom";
 import { AppSidebar } from "./app-sidebar";
-import { Bell, ChevronRight, Menu } from "lucide-react";
+import { ChevronRight, Menu } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { ThemeToggle } from "@/components/ui/theme-toggle";
-import { toast } from "sonner";
+import { NotificationsPopover } from "@/components/notifications/notifications-popover";
 
 const ROUTE_LABELS: Record<string, string> = {
   "": "Dashboard",
@@ -71,15 +71,7 @@ export function AppShell() {
 
             <ThemeToggle />
 
-            <Button
-              variant="ghost"
-              size="icon"
-              className="size-8 relative"
-              onClick={() => toast.info("Nenhuma nova notificação no momento.")}
-              title="Notificações"
-            >
-              <Bell className="size-4 text-muted-foreground" />
-            </Button>
+            <NotificationsPopover />
           </div>
         </header>
 
