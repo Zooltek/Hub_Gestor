@@ -73,8 +73,8 @@ export function LoginPage() {
       <div className="w-full max-w-md flex flex-col gap-6 relative z-10">
         {/* Branding */}
         <div className="text-center flex flex-col items-center">
-          <div className="flex items-center justify-center size-12 rounded-xl bg-primary text-primary-foreground shadow-lg shadow-primary/30 mb-3">
-            <ShieldCheck className="size-6" />
+          <div className="flex items-center justify-center size-12 rounded-xl overflow-hidden shadow-lg shadow-primary/30 mb-3 bg-primary/10">
+            <img src="/ICONE.png" alt="Hub Gestor" className="size-12 object-contain" />
           </div>
           <h1 className="text-2xl font-bold tracking-tight text-foreground">
             Hub Gestor

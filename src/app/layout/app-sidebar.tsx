@@ -87,8 +87,8 @@ export function AppSidebar({ isMobileOpen = false, onMobileClose }: AppSidebarPr
         <div className="p-4 border-b border-sidebar-border flex flex-col gap-3">
           <div className="flex items-center justify-between">
             <div className="flex items-center gap-3">
-              <div className="flex size-9 items-center justify-center rounded-xl bg-primary text-primary-foreground shadow-md shadow-primary/20">
-                <ShieldCheck className="size-5" />
+              <div className="flex size-9 items-center justify-center rounded-xl overflow-hidden shadow-md shadow-primary/20 bg-primary/10">
+                <img src="/ICONE.png" alt="Hub Gerencial" className="size-9 object-contain" />
               </div>
               <div className="flex flex-col">
                 <span className="font-bold text-sm text-sidebar-foreground tracking-tight">
