@@ -65,7 +65,9 @@ export function NotificationsPopover() {
     try {
       const saved = localStorage.getItem(storageKey);
       if (saved) {
-        return JSON.parse(saved);
+        const parsed: HubNotification[] = JSON.parse(saved);
+        // Remove quaisquer notificações de tributação ou informativas antigas
+        return parsed.filter((n) => n.type !== "tax" && !n.title.toLowerCase().includes("tributa"));
       }
     } catch {
       // ignore
@@ -97,26 +99,11 @@ export function NotificationsPopover() {
       const existingIds = new Set(existing.map((n) => n.id));
       const newItems: HubNotification[] = [];
 
-      // 1. Falhas e alertas de pedidos reais
-      orders.forEach((o, index) => {
+      // 1. Falhas e erros de pedidos reais
+      orders.forEach((o) => {
         const orderCode = o.marketplaceOrderId || `ORD-${o.id.slice(0, 6)}`;
-        
-        // Notificação de Tributação calculada (padrão Hub Admin)
-        const taxId = `tax_${o.id}`;
-        if (!existingIds.has(taxId)) {
-          newItems.push({
-            id: taxId,
-            type: "tax",
-            title: "Tributação calculada",
-            description: `A venda ${orderCode} teve a tributação calculada.`,
-            createdAt: o.createdAtUtc || new Date(Date.now() - index * 86400000 * 2).toISOString(),
-            read: false,
-            link: "/pedidos",
-            severity: "info",
-          });
-        }
 
-        // Falha no download ERP
+        // Falha no download / sincronização ERP
         if (o.erpDownloadStatus === "ERRO") {
           const errId = `order_erp_err_${o.id}`;
           if (!existingIds.has(errId)) {
