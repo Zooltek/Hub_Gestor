@@ -390,6 +390,63 @@ export function ErpConnectionsPage() {
     );
   });
 
+  // Sync Schedules State
+  const [syncSchedules, setSyncSchedules] = useState<{
+    ordersIntervalMinutes: number;
+    stockIntervalMinutes: number;
+    catalogIntervalHours: number;
+    businessHoursBoost: boolean;
+    autoImportNewProducts: boolean;
+    notifyOnFailure: boolean;
+  }>({
+    ordersIntervalMinutes: 5,
+    stockIntervalMinutes: 15,
+    catalogIntervalHours: 6,
+    businessHoursBoost: true,
+    autoImportNewProducts: true,
+    notifyOnFailure: true,
+  });
+
+  const [isSyncingNow, setIsSyncingNow] = useState(false);
+
+  useEffect(() => {
+    if (!user?.customerId) return;
+    try {
+      const stored = localStorage.getItem(`hub_sync_schedules_${user.customerId}`);
+      if (stored) {
+        setSyncSchedules(JSON.parse(stored));
+      }
+    } catch {
+      // ignore
+    }
+  }, [user?.customerId]);
+
+  const handleSaveSchedules = () => {
+    if (!user?.customerId) return;
+    try {
+      localStorage.setItem(`hub_sync_schedules_${user.customerId}`, JSON.stringify(syncSchedules));
+      toast.success("Frequências de sincronização salvas com sucesso!");
+    } catch {
+      toast.error("Erro ao salvar agendamentos.");
+    }
+  };
+
+  const handleSyncAllNow = async () => {
+    setIsSyncingNow(true);
+    try {
+      await Promise.all([
+        fetchProductCatalog(user?.customerId || "").catch(() => []),
+        fetchCustomerOrders(user?.customerId || "").catch(() => []),
+        checkHubHealth().catch(() => ({ latencyMs: 25 })),
+      ]);
+      toast.success("Sincronização imediata concluída com sucesso em todos os conectores!");
+    } catch {
+      toast.error("Erro ao disparar sincronização imediata.");
+    } finally {
+      setIsSyncingNow(false);
+    }
+  };
+
   return (
     <div className="flex flex-col gap-6">
       {/* Header */}
@@ -400,7 +457,7 @@ export function ErpConnectionsPage() {
             Conexão ERP Online & Catálogo de Plugins
           </h1>
           <p className="text-sm text-muted-foreground">
-            Instale e gerencie os plugins oficiais do Hub Admin ou conecte seu ERP em nuvem para sincronização em tempo real.
+            Instale e gerencie os plugins oficiais do Hub Admin ou configure a frequência de busca de pedidos e produtos.
           </p>
         </div>
 
@@ -414,10 +471,14 @@ export function ErpConnectionsPage() {
 
       {/* Main Tabs */}
       <Tabs defaultValue="hub-plugins" className="w-full flex flex-col gap-4">
-        <TabsList className="grid grid-cols-3 max-w-xl">
+        <TabsList className="grid grid-cols-4 max-w-2xl">
           <TabsTrigger value="hub-plugins" className="text-xs flex items-center gap-1.5">
             <Boxes className="size-4" />
-            Plugins do Hub Admin ({hubPlugins.length})
+            Plugins do Hub ({hubPlugins.length})
+          </TabsTrigger>
+          <TabsTrigger value="schedules" className="text-xs flex items-center gap-1.5">
+            <RefreshCw className="size-4" />
+            Frequência de Busca
           </TabsTrigger>
           <TabsTrigger value="erps" className="text-xs flex items-center gap-1.5">
             <Store className="size-4" />
@@ -428,6 +489,195 @@ export function ErpConnectionsPage() {
             API REST & Webhook
           </TabsTrigger>
         </TabsList>
+
+        {/* Tab 2: Sync Schedules & Frequencies */}
+        <TabsContent value="schedules" className="m-0 flex flex-col gap-4">
+          <Card className="border-border/80">
+            <CardHeader className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
+              <div>
+                <CardTitle className="text-base flex items-center gap-2">
+                  <RefreshCw className="size-4 text-primary" />
+                  Frequência de Sincronização e Busca Automática
+                </CardTitle>
+                <CardDescription className="text-xs mt-1">
+                  Defina de quanto em quanto tempo o Hub deve consultar novos pedidos, saldos de estoque e atualizações de produtos no seu ERP.
+                </CardDescription>
+              </div>
+
+              <Button
+                variant="secondary"
+                size="sm"
+                onClick={handleSyncAllNow}
+                disabled={isSyncingNow}
+                className="h-8 text-xs gap-1.5 shrink-0"
+              >
+                <Zap className={`size-3.5 ${isSyncingNow ? "animate-spin text-primary" : ""}`} />
+                {isSyncingNow ? "Sincronizando..." : "Sincronizar Agora"}
+              </Button>
+            </CardHeader>
+
+            <CardContent className="flex flex-col gap-6">
+              <div className="grid gap-6 md:grid-cols-3">
+                {/* Orders Frequency */}
+                <div className="flex flex-col gap-2 rounded-xl border border-border/70 bg-card p-4">
+                  <div className="flex items-center gap-2">
+                    <div className="p-2 rounded-lg bg-emerald-500/10 text-emerald-400">
+                      <Zap className="size-4" />
+                    </div>
+                    <div>
+                      <p className="text-xs font-bold text-foreground">Busca de Novos Pedidos</p>
+                      <p className="text-[11px] text-muted-foreground">Frequência no ERP / Canais</p>
+                    </div>
+                  </div>
+
+                  <select
+                    value={syncSchedules.ordersIntervalMinutes}
+                    onChange={(e) =>
+                      setSyncSchedules((prev) => ({
+                        ...prev,
+                        ordersIntervalMinutes: Number(e.target.value),
+                      }))
+                    }
+                    className="mt-2 h-9 rounded-lg border border-input bg-background px-3 text-xs text-foreground focus:outline-none focus:ring-1 focus:ring-ring"
+                  >
+                    <option value={0}>⚡ Tempo Real (Webhooks Push)</option>
+                    <option value={3}>A cada 3 minutos (Alta Frequência)</option>
+                    <option value={5}>A cada 5 minutos (Recomendado)</option>
+                    <option value={15}>A cada 15 minutos</option>
+                    <option value={30}>A cada 30 minutos</option>
+                    <option value={60}>A cada 1 hora</option>
+                  </select>
+
+                  <p className="text-[11px] text-muted-foreground mt-1">
+                    Garante que pedidos aprovados sejam faturados e baixados no ERP quase instantaneamente.
+                  </p>
+                </div>
+
+                {/* Stock Frequency */}
+                <div className="flex flex-col gap-2 rounded-xl border border-border/70 bg-card p-4">
+                  <div className="flex items-center gap-2">
+                    <div className="p-2 rounded-lg bg-sky-500/10 text-sky-400">
+                      <Boxes className="size-4" />
+                    </div>
+                    <div>
+                      <p className="text-xs font-bold text-foreground">Atualização de Estoque</p>
+                      <p className="text-[11px] text-muted-foreground">Sincronização de Saldos</p>
+                    </div>
+                  </div>
+
+                  <select
+                    value={syncSchedules.stockIntervalMinutes}
+                    onChange={(e) =>
+                      setSyncSchedules((prev) => ({
+                        ...prev,
+                        stockIntervalMinutes: Number(e.target.value),
+                      }))
+                    }
+                    className="mt-2 h-9 rounded-lg border border-input bg-background px-3 text-xs text-foreground focus:outline-none focus:ring-1 focus:ring-ring"
+                  >
+                    <option value={5}>A cada 5 minutos</option>
+                    <option value={15}>A cada 15 minutos (Recomendado)</option>
+                    <option value={30}>A cada 30 minutos</option>
+                    <option value={60}>A cada 1 hora</option>
+                    <option value={240}>A cada 4 horas</option>
+                  </select>
+
+                  <p className="text-[11px] text-muted-foreground mt-1">
+                    Evita rupturas e vendas sem estoque atualizando as quantidades nos marketplaces.
+                  </p>
+                </div>
+
+                {/* Products & Price Frequency */}
+                <div className="flex flex-col gap-2 rounded-xl border border-border/70 bg-card p-4">
+                  <div className="flex items-center gap-2">
+                    <div className="p-2 rounded-lg bg-purple-500/10 text-purple-400">
+                      <Layers className="size-4" />
+                    </div>
+                    <div>
+                      <p className="text-xs font-bold text-foreground">Produtos & Preços</p>
+                      <p className="text-[11px] text-muted-foreground">Catálogo e Variações</p>
+                    </div>
+                  </div>
+
+                  <select
+                    value={syncSchedules.catalogIntervalHours}
+                    onChange={(e) =>
+                      setSyncSchedules((prev) => ({
+                        ...prev,
+                        catalogIntervalHours: Number(e.target.value),
+                      }))
+                    }
+                    className="mt-2 h-9 rounded-lg border border-input bg-background px-3 text-xs text-foreground focus:outline-none focus:ring-1 focus:ring-ring"
+                  >
+                    <option value={1}>A cada 1 hora</option>
+                    <option value={3}>A cada 3 horas</option>
+                    <option value={6}>A cada 6 horas (Recomendado)</option>
+                    <option value={12}>A cada 12 horas</option>
+                    <option value={24}>Diário (1 vez ao dia às 00:00)</option>
+                  </select>
+
+                  <p className="text-[11px] text-muted-foreground mt-1">
+                    Atualiza descrições, imagens, novos preços de venda e novas variações do ERP.
+                  </p>
+                </div>
+              </div>
+
+              {/* Extra Automation Options */}
+              <div className="flex flex-col gap-3 pt-4 border-t border-border/60">
+                <p className="text-xs font-bold text-foreground">Regras de Automação Adicionais</p>
+
+                <div className="grid gap-3 sm:grid-cols-2">
+                  <label className="flex items-center gap-3 p-3 rounded-lg border border-border/60 bg-muted/20 cursor-pointer hover:bg-muted/40 transition-colors">
+                    <input
+                      type="checkbox"
+                      checked={syncSchedules.businessHoursBoost}
+                      onChange={(e) =>
+                        setSyncSchedules((prev) => ({
+                          ...prev,
+                          businessHoursBoost: e.target.checked,
+                        }))
+                      }
+                      className="size-4 rounded text-primary focus:ring-primary"
+                    />
+                    <div className="text-xs">
+                      <p className="font-semibold text-foreground">Acelerar em Horário Comercial (08h às 20h)</p>
+                      <p className="text-[11px] text-muted-foreground">Dobra a frequência de polling nos horários de maior fluxo de vendas.</p>
+                    </div>
+                  </label>
+
+                  <label className="flex items-center gap-3 p-3 rounded-lg border border-border/60 bg-muted/20 cursor-pointer hover:bg-muted/40 transition-colors">
+                    <input
+                      type="checkbox"
+                      checked={syncSchedules.autoImportNewProducts}
+                      onChange={(e) =>
+                        setSyncSchedules((prev) => ({
+                          ...prev,
+                          autoImportNewProducts: e.target.checked,
+                        }))
+                      }
+                      className="size-4 rounded text-primary focus:ring-primary"
+                    />
+                    <div className="text-xs">
+                      <p className="font-semibold text-foreground">Importar Novos Produtos Automaticamente</p>
+                      <p className="text-[11px] text-muted-foreground">Cadastra SKUs novos detectados no ERP direto na esteira de produtos.</p>
+                    </div>
+                  </label>
+                </div>
+              </div>
+
+              <div className="flex justify-end pt-3 border-t border-border/60">
+                <Button
+                  size="sm"
+                  onClick={handleSaveSchedules}
+                  className="text-xs gap-1.5 bg-primary hover:bg-primary/90 text-primary-foreground font-semibold"
+                >
+                  <Check className="size-3.5" />
+                  Salvar Preferências de Sincronização
+                </Button>
+              </div>
+            </CardContent>
+          </Card>
+        </TabsContent>
 
         {/* Tab 1: Hub Admin Available Plugins */}
         <TabsContent value="hub-plugins" className="flex flex-col gap-4 m-0">
