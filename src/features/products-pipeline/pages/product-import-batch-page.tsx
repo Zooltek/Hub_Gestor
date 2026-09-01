@@ -142,33 +142,49 @@ export function ProductImportBatchPage() {
     const map = new Map<string, {
       reference: string;
       representativeItem: ProductChangeDto;
+      items: ProductChangeDto[];
       variations: ProductChangeVariationDto[];
     }>();
 
     filteredItems.forEach((item) => {
-      const ref = item.reference || item.sku;
-      if (!map.has(ref)) {
-        map.set(ref, {
+      const ref = (item.reference || item.sku || "").trim();
+      const lookupKey = ref.toLowerCase();
+
+      const itemVariations: ProductChangeVariationDto[] =
+        item.variations && item.variations.length > 0
+          ? item.variations
+          : [
+              {
+                sku: item.sku,
+                variationName: "Padrão",
+                stock: item.stock,
+                price: item.price,
+                statusLabel: item.statusLabel,
+                reviewLabel: item.reviewLabel || (item.requiresReview ? "Manual" : "Automática"),
+                dispatchTargets: [item.dispatchTarget || "Shopify"],
+                createdAtUtc: item.createdAtUtc,
+              },
+            ];
+
+      if (!map.has(lookupKey)) {
+        map.set(lookupKey, {
           reference: ref,
           representativeItem: item,
-          variations: item.variations && item.variations.length > 0 ? item.variations : [
-            {
-              sku: item.sku,
-              variationName: "Padrão",
-              stock: item.stock,
-              price: item.price,
-              statusLabel: item.statusLabel,
-              reviewLabel: item.reviewLabel || (item.requiresReview ? "Manual" : "Automática"),
-              dispatchTargets: [item.dispatchTarget || "Shopify"],
-              createdAtUtc: item.createdAtUtc,
-            },
-          ],
+          items: [item],
+          variations: [...itemVariations],
         });
       } else {
-        const current = map.get(ref)!;
-        if (item.variations && item.variations.length > 0) {
-          current.variations = item.variations;
-        }
+        const group = map.get(lookupKey)!;
+        group.items.push(item);
+
+        itemVariations.forEach((v) => {
+          const exists = group.variations.some(
+            (gv) => gv.sku?.toLowerCase() === v.sku?.toLowerCase() && gv.variationName === v.variationName
+          );
+          if (!exists) {
+            group.variations.push(v);
+          }
+        });
       }
     });
 

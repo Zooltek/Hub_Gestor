@@ -476,15 +476,35 @@ export async function fetchProductBatchById(batchId: string): Promise<{ batch: P
         const statusLabel = statusMap[item.status] || (item.diff?.length > 0 ? "Alterado" : "Sem alteração");
         const reviewLabel = item.status === 7 ? "Bloqueada" : item.requiresReview ? "Manual" : "Automática";
 
+        const reference = [
+          item.reference,
+          incoming.referencia,
+          incoming.shared?.referencia,
+          saved.referencia,
+          item.sku,
+        ].map((v) => (typeof v === "string" ? v.trim() : "")).find(Boolean) || item.sku || item.id || "";
+
+        const sku = [
+          item.sku,
+          incoming.sku,
+          incoming.variations?.[0]?.sku,
+          saved.sku,
+          item.reference,
+        ].map((v) => (typeof v === "string" ? v.trim() : "")).find(Boolean) || reference;
+
+        const size = incoming.tamanho || saved.tamanho || "";
+        const color = incoming.nomeCor || incoming.cor || saved.nomeCor || saved.cor || "";
+        const variationName = [size, color].filter(Boolean).join(" - ") || incoming.descricao || title || "Padrão";
+
         const parsedVariations: ProductChangeVariationDto[] = Array.isArray(variations) && variations.length > 0
           ? variations.map((v: any) => {
               const vAttrs = Array.isArray(v.variationAttributes) ? v.variationAttributes : [];
               const corObj = vAttrs.find((a: any) => a.key?.toLowerCase() === "cor" || a.key?.toLowerCase() === "nomecor");
               const tamObj = vAttrs.find((a: any) => a.key?.toLowerCase() === "tamanho" || a.key?.toLowerCase() === "grade");
-              const size = v.tamanho || tamObj?.value || v.size || "";
-              const color = v.nomeCor || corObj?.value || v.cor || v.color || "";
-              const colorCode = v.cor || v.colorCode || "";
-              const variationName = [size, color].filter(Boolean).join(" - ") || v.descricao || v.nome || "Padrão";
+              const vSize = v.tamanho || tamObj?.value || v.size || "";
+              const vColor = v.nomeCor || corObj?.value || v.cor || v.color || "";
+              const vColorCode = v.cor || v.colorCode || "";
+              const vVariationName = [vSize, vColor].filter(Boolean).join(" - ") || v.descricao || v.nome || "Padrão";
 
               const vStockRaw = v.estoque ?? v.stock ?? v.quantidade ?? v.qty ?? 0;
               const vStock = typeof vStockRaw === "number" ? vStockRaw : parseInt(String(vStockRaw), 10) || 0;
@@ -493,11 +513,11 @@ export async function fetchProductBatchById(batchId: string): Promise<{ batch: P
               const vPrice = typeof vPriceRaw === "number" ? vPriceRaw : parseFloat(String(vPriceRaw).replace(",", ".")) || 0;
 
               return {
-                sku: v.sku || item.sku || item.reference,
-                variationName,
-                color,
-                colorCode,
-                size,
+                sku: v.sku || sku,
+                variationName: vVariationName,
+                color: vColor,
+                colorCode: vColorCode,
+                size: vSize,
                 barcode: v.codigoBarras || v.barcode || "",
                 stock: vStock,
                 price: vPrice,
@@ -507,13 +527,27 @@ export async function fetchProductBatchById(batchId: string): Promise<{ batch: P
                 createdAtUtc: item.createdAt || batchObj.createdAt || new Date().toISOString(),
               };
             })
-          : [];
+          : [
+              {
+                sku: sku,
+                variationName,
+                color,
+                size,
+                barcode: incoming.codigoBarras || "",
+                stock,
+                price,
+                statusLabel,
+                reviewLabel,
+                dispatchTargets: item.dispatchTargets || ["Shopify"],
+                createdAtUtc: item.createdAt || batchObj.createdAt || new Date().toISOString(),
+              },
+            ];
 
         return {
-          id: item.id || item.reference,
+          id: item.id || item.reference || sku,
           customerId: item.customerId || batchObj.customerId,
-          sku: item.reference || item.sku,
-          reference: item.reference || item.sku,
+          sku,
+          reference,
           status: item.status ?? 0,
           statusLabel,
           reviewLabel,
