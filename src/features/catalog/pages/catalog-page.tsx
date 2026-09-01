@@ -15,6 +15,7 @@ import {
   Plus,
   Trash2,
   ImageIcon,
+  Send,
 } from "lucide-react";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription, CardFooter } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -37,7 +38,12 @@ import {
   DialogFooter,
 } from "@/components/ui/dialog";
 import { useAuth } from "@/app/providers/auth-provider";
-import { fetchProductCatalog, saveCatalogItem, bulkEditCatalog } from "@/lib/api/hub-client";
+import {
+  fetchProductCatalog,
+  saveCatalogItem,
+  bulkEditCatalog,
+  createProductBatchFromCatalog,
+} from "@/lib/api/hub-client";
 import type { CatalogItemDto, CatalogItemVariationDto } from "@/lib/api/types";
 import { formatCurrency, formatDateTime, formatNumber } from "@/lib/utils";
 import { toast } from "sonner";
@@ -54,6 +60,7 @@ export function CatalogPage() {
   const [selectedSkus, setSelectedSkus] = useState<string[]>([]);
   const [isLoading, setIsLoading] = useState(false);
   const [isSaving, setIsSaving] = useState(false);
+  const [isCreatingBatch, setIsCreatingBatch] = useState(false);
 
   // Edit Single Product state (Hub Admin standard)
   const [editingItem, setEditingItem] = useState<CatalogItemDto | null>(null);
@@ -325,6 +332,27 @@ export function CatalogPage() {
     }
   };
 
+  const handleCreateBatch = async () => {
+    if (selectedSkus.length === 0 || !user?.customerId) return;
+    setIsCreatingBatch(true);
+    try {
+      const result = await createProductBatchFromCatalog(user.customerId, selectedSkus);
+      if (result.errors && result.errors.length > 0 && result.processed === 0) {
+        toast.error(`Falha ao criar lote:\n${result.errors.join("\n")}`, { duration: 6000 });
+        return;
+      }
+      toast.success(
+        `Lote criado com sucesso! ${result.dispatched || selectedSkus.length} produto(s) preparados para envio aos canais de venda.`,
+        { duration: 5000 }
+      );
+      setSelectedSkus([]);
+    } catch {
+      toast.error("Não foi possível criar o lote dos produtos selecionados.");
+    } finally {
+      setIsCreatingBatch(false);
+    }
+  };
+
   return (
     <div className="flex flex-col gap-6">
       {/* Header */}
@@ -339,16 +367,29 @@ export function CatalogPage() {
           </p>
         </div>
 
-        <div className="flex items-center gap-2">
+        <div className="flex flex-wrap items-center gap-2">
           {selectedSkus.length > 0 && (
-            <Button
-              size="sm"
-              onClick={() => setIsBulkEditOpen(true)}
-              className="h-9 gap-1.5 text-xs"
-            >
-              <SlidersHorizontal className="size-3.5" />
-              Edição em Massa ({selectedSkus.length})
-            </Button>
+            <>
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={() => setIsBulkEditOpen(true)}
+                className="h-9 gap-1.5 text-xs"
+              >
+                <SlidersHorizontal className="size-3.5" />
+                Edição em Massa ({selectedSkus.length})
+              </Button>
+
+              <Button
+                size="sm"
+                onClick={handleCreateBatch}
+                disabled={isCreatingBatch}
+                className="h-9 gap-1.5 text-xs bg-primary text-primary-foreground hover:bg-primary/90 cursor-pointer shadow-xs"
+              >
+                <Send className={`size-3.5 ${isCreatingBatch ? "animate-spin" : ""}`} />
+                {isCreatingBatch ? "Criando lote..." : `Criar lote (${selectedSkus.length})`}
+              </Button>
+            </>
           )}
 
           <Button
