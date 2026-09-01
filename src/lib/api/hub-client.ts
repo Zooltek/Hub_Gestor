@@ -1646,9 +1646,29 @@ export async function fetchHubAvailablePlugins(customerId?: string): Promise<Hub
         }))
       : defaultHubPlugins;
 
-    // Check customer installed status
+    // Check customer installed status on server & local fallback
     if (customerId) {
+      let serverCustomerPlugins: any[] = [];
       let customerConfigMap: Record<string, any> = {};
+
+      // 1. Try reading live customer status from Hub server
+      try {
+        const { data: customerData } = await http.get<any>(`/api/admin/customers/${encodeURIComponent(customerId)}`);
+        if (customerData && Array.isArray(customerData.plugins)) {
+          serverCustomerPlugins = customerData.plugins;
+        }
+      } catch {
+        try {
+          const { data: pluginsData } = await http.get<any>(`/api/admin/customers/${encodeURIComponent(customerId)}/plugins`);
+          if (Array.isArray(pluginsData)) {
+            serverCustomerPlugins = pluginsData;
+          }
+        } catch {
+          // ignore
+        }
+      }
+
+      // 2. Read local overrides
       try {
         const stored = localStorage.getItem(`hub_customer_plugins_${customerId}`);
         if (stored) customerConfigMap = JSON.parse(stored);
@@ -1656,13 +1676,32 @@ export async function fetchHubAvailablePlugins(customerId?: string): Promise<Hub
         // ignore
       }
 
+      const serverPluginMap = new Map(
+        serverCustomerPlugins.map((sp: any) => [
+          (sp.systemName || sp.SystemName || "").toLowerCase(),
+          sp,
+        ])
+      );
+
       return baseList.map((p) => {
+        const serverPlugin = serverPluginMap.get(p.systemName.toLowerCase());
         const localCfg = customerConfigMap[p.systemName];
+
+        const isInstalled = serverPlugin
+          ? Boolean(serverPlugin.installed ?? serverPlugin.Installed ?? true)
+          : Boolean(localCfg?.installed ?? (p.systemName === "Ecommerce.Shopify" || p.systemName === "Marketplace.MercadoLivre"));
+
+        const isEnabled = serverPlugin
+          ? Boolean(serverPlugin.isEnabled ?? serverPlugin.IsEnabled ?? true)
+          : Boolean(localCfg?.enabled ?? (p.systemName === "Ecommerce.Shopify" || p.systemName === "Marketplace.MercadoLivre"));
+
+        const currentValues = serverPlugin?.configuration || serverPlugin?.values || localCfg?.values || {};
+
         return {
           ...p,
-          isInstalledForCustomer: Boolean(localCfg?.installed ?? (p.systemName === "Ecommerce.Shopify" || p.systemName === "Marketplace.MercadoLivre")),
-          isEnabledForCustomer: Boolean(localCfg?.enabled ?? (p.systemName === "Ecommerce.Shopify" || p.systemName === "Marketplace.MercadoLivre")),
-          currentConfiguration: localCfg?.values ?? {},
+          isInstalledForCustomer: isInstalled,
+          isEnabledForCustomer: isInstalled && isEnabled,
+          currentConfiguration: currentValues,
         };
       });
     }
