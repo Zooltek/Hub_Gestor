@@ -36,14 +36,36 @@ import {
   DialogFooter,
 } from "@/components/ui/dialog";
 import { ConcurrencyBanner } from "@/components/shared/concurrency-banner";
+import { StatusBadge } from "@/components/shared/status-badge";
 import { useConcurrencyLock } from "@/hooks/use-concurrency-lock";
 import { useAuth } from "@/app/providers/auth-provider";
 import { fetchCustomerOrders, saveCustomerOrder } from "@/lib/api/hub-client";
 import type { CustomerOrderDto } from "@/lib/api/types";
+import {
+  getOrderBackendStatusLabel,
+  getOrderBackendStatusTone,
+  getOrderImportStatusLabel,
+  getOrderImportStatusTone,
+  normalizeOrderBackendStatus,
+} from "@/lib/status";
 import { formatCurrency, formatDateTime } from "@/lib/utils";
 import { toast } from "sonner";
 
 const PAGE_SIZE = 10;
+
+const ORDER_STATUS_FILTER_OPTIONS = [
+  { value: "all", label: "Todos os Status" },
+  { value: "1", label: "Pedido recebido" },
+  { value: "2", label: "Aguardando pagamento" },
+  { value: "3", label: "Pagamento recebido" },
+  { value: "4", label: "Pagamento cancelado" },
+  { value: "5", label: "Pedido em análise" },
+  { value: "6", label: "Pedido em separação" },
+  { value: "7", label: "Pedido faturado" },
+  { value: "8", label: "Pedido enviado" },
+  { value: "9", label: "Pedido entregue" },
+  { value: "10", label: "Pedido cancelado" },
+];
 
 export function OrdersPage() {
   const { user } = useAuth();
@@ -81,7 +103,7 @@ export function OrdersPage() {
   const [editorTab, setEditorTab] = useState<"form" | "json">("form");
   const [rawJsonText, setRawJsonText] = useState("");
   const [formCustomerName, setFormCustomerName] = useState("");
-  const [formStatus, setFormStatus] = useState<CustomerOrderDto["status"]>("APROVADO");
+  const [formStatusOrder, setFormStatusOrder] = useState<number>(1);
   const [formPaymentMethod, setFormPaymentMethod] = useState("");
   const [isEditing, setIsEditing] = useState(false);
   const [isSaving, setIsSaving] = useState(false);
@@ -95,14 +117,20 @@ export function OrdersPage() {
 
   const filteredOrders = useMemo(() => {
     return orders.filter((order) => {
+      const normalizedStatusNum = normalizeOrderBackendStatus(order.statusOrder);
       const matchesSearch =
-        order.marketplaceOrderId.toLowerCase().includes(searchTerm.toLowerCase()) ||
-        order.customerName.toLowerCase().includes(searchTerm.toLowerCase()) ||
-        order.customerDocument.includes(searchTerm) ||
+        (order.marketplaceOrderId || "").toLowerCase().includes(searchTerm.toLowerCase()) ||
+        (order.orderId || "").toLowerCase().includes(searchTerm.toLowerCase()) ||
+        (order.fileName || "").toLowerCase().includes(searchTerm.toLowerCase()) ||
+        (order.customerName || "").toLowerCase().includes(searchTerm.toLowerCase()) ||
+        (order.customerDocument || "").includes(searchTerm) ||
         order.items.some((i) => i.title.toLowerCase().includes(searchTerm.toLowerCase()) || i.sku.toLowerCase().includes(searchTerm.toLowerCase()));
 
       const matchesChannel = channelFilter === "all" || order.channel === channelFilter;
-      const matchesStatus = statusFilter === "all" || order.status === statusFilter;
+      const matchesStatus =
+        statusFilter === "all" ||
+        String(normalizedStatusNum) === statusFilter ||
+        order.status === statusFilter;
 
       return matchesSearch && matchesChannel && matchesStatus;
     });
@@ -114,7 +142,7 @@ export function OrdersPage() {
   const handleOpenOrder = (order: CustomerOrderDto) => {
     setSelectedOrder(order);
     setFormCustomerName(order.customerName);
-    setFormStatus(order.status);
+    setFormStatusOrder(normalizeOrderBackendStatus(order.statusOrder) || 1);
     setFormPaymentMethod(order.paymentMethod);
     setRawJsonText(order.rawJson || JSON.stringify(order, null, 2));
     setEditorTab("form");
@@ -148,10 +176,12 @@ export function OrdersPage() {
         };
         updatedJsonString = JSON.stringify(parsed);
       } else {
+        const statusLabel = getOrderBackendStatusLabel(formStatusOrder);
         updatedOrderDto = {
           ...selectedOrder,
           customerName: formCustomerName,
-          status: formStatus,
+          statusOrder: formStatusOrder,
+          status: statusLabel,
           paymentMethod: formPaymentMethod,
           version: (selectedOrder.version || 1) + 1,
           updatedAtUtc: new Date().toISOString(),
@@ -170,22 +200,6 @@ export function OrdersPage() {
     }
   };
 
-  const getStatusBadgeVariant = (status: CustomerOrderDto["status"]) => {
-    switch (status) {
-      case "APROVADO":
-        return "success";
-      case "FATURADO":
-      case "ENTREGUE":
-        return "info";
-      case "PENDENTE":
-        return "warning";
-      case "CANCELADO":
-        return "destructive";
-      default:
-        return "secondary";
-    }
-  };
-
   return (
     <div className="flex flex-col gap-6">
       {/* Header */}
@@ -200,26 +214,68 @@ export function OrdersPage() {
           </p>
         </div>
 
-        <div className="flex items-center gap-2">
-          <Button
-            variant="outline"
-            size="sm"
-            onClick={() => loadOrders(true)}
-            disabled={isLoadingOrders}
-          >
-            <RefreshCw className={`size-3.5 mr-1.5 ${isLoadingOrders ? "animate-spin" : ""}`} />
-            {isLoadingOrders ? "Sincronizando..." : "Atualizar Lista"}
-          </Button>
-        </div>
+        <Button
+          onClick={() => loadOrders(true)}
+          disabled={isLoadingOrders}
+          variant="outline"
+          size="sm"
+          className="self-start sm:self-auto gap-1.5"
+        >
+          <RefreshCw className={`size-3.5 ${isLoadingOrders ? "animate-spin" : ""}`} />
+          Sincronizar Pedidos
+        </Button>
       </div>
 
-      {/* Filters Bar */}
+      {/* KPI Cards */}
+      <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+        <Card className="border-border/80">
+          <CardHeader className="p-4 pb-2">
+            <CardDescription className="text-xs">Total de Pedidos</CardDescription>
+            <CardTitle className="text-2xl font-bold">{orders.length}</CardTitle>
+          </CardHeader>
+        </Card>
+        <Card className="border-border/80">
+          <CardHeader className="p-4 pb-2">
+            <CardDescription className="text-xs flex items-center gap-1.5">
+              <span className="size-2 rounded-full bg-emerald-500" />
+              Importados no ERP
+            </CardDescription>
+            <CardTitle className="text-2xl font-bold text-emerald-600 dark:text-emerald-400">
+              {orders.filter((o) => getOrderImportStatusLabel(o.importStatus) === "Importado" || o.erpDownloadStatus === "BAIXADO").length}
+            </CardTitle>
+          </CardHeader>
+        </Card>
+        <Card className="border-border/80">
+          <CardHeader className="p-4 pb-2">
+            <CardDescription className="text-xs flex items-center gap-1.5">
+              <span className="size-2 rounded-full bg-amber-500" />
+              Pendentes / Baixados
+            </CardDescription>
+            <CardTitle className="text-2xl font-bold text-amber-500">
+              {orders.filter((o) => getOrderImportStatusLabel(o.importStatus) !== "Importado" && getOrderImportStatusLabel(o.importStatus) !== "Falha na importação").length}
+            </CardTitle>
+          </CardHeader>
+        </Card>
+        <Card className="border-border/80">
+          <CardHeader className="p-4 pb-2">
+            <CardDescription className="text-xs flex items-center gap-1.5">
+              <span className="size-2 rounded-full bg-destructive" />
+              Falhas / Cancelados
+            </CardDescription>
+            <CardTitle className="text-2xl font-bold text-destructive">
+              {orders.filter((o) => normalizeOrderBackendStatus(o.statusOrder) === 10 || getOrderImportStatusLabel(o.importStatus) === "Falha na importação").length}
+            </CardTitle>
+          </CardHeader>
+        </Card>
+      </div>
+
+      {/* Filter Bar */}
       <Card className="border-border/80">
-        <CardContent className="p-4 flex flex-col sm:flex-row gap-3 items-center justify-between">
-          <div className="relative w-full sm:w-80">
+        <CardContent className="p-4 flex flex-col sm:flex-row items-center justify-between gap-3">
+          <div className="relative w-full sm:max-w-md">
             <Search className="absolute left-2.5 top-2.5 size-4 text-muted-foreground" />
             <Input
-              placeholder="Buscar por ID, Cliente, Documento ou SKU..."
+              placeholder="Buscar por OrderId, Integração, Cliente ou SKU..."
               value={searchTerm}
               onChange={(e) => {
                 setSearchTerm(e.target.value);
@@ -239,7 +295,7 @@ export function OrdersPage() {
               className="h-9 rounded-lg border border-input bg-card px-3 text-xs text-foreground focus:outline-none focus:ring-1 focus:ring-ring"
             >
               <option value="all">Todos os Canais</option>
-              {Array.from(new Set(orders.map((o) => o.channelName).filter(Boolean))).map((ch) => (
+              {Array.from(new Set(orders.map((o) => o.channelName || o.integrationName || "").filter((ch): ch is string => Boolean(ch)))).map((ch) => (
                 <option key={ch} value={ch.toLowerCase().replace(/\s+/g, "")}>
                   {ch}
                 </option>
@@ -254,12 +310,11 @@ export function OrdersPage() {
               }}
               className="h-9 rounded-lg border border-input bg-card px-3 text-xs text-foreground focus:outline-none focus:ring-1 focus:ring-ring"
             >
-              <option value="all">Todos os Status</option>
-              <option value="APROVADO">Aprovado</option>
-              <option value="PENDENTE">Pendente</option>
-              <option value="FATURADO">Faturado</option>
-              <option value="ENTREGUE">Entregue</option>
-              <option value="CANCELADO">Cancelado</option>
+              {ORDER_STATUS_FILTER_OPTIONS.map((opt) => (
+                <option key={opt.value} value={opt.value}>
+                  {opt.label}
+                </option>
+              ))}
             </select>
           </div>
         </CardContent>
@@ -293,27 +348,30 @@ export function OrdersPage() {
             <Table>
               <TableHeader>
                 <TableRow>
-                  <TableHead>Pedido / Marketplace</TableHead>
-                  <TableHead>Canal</TableHead>
-                  <TableHead>Cliente / CPF</TableHead>
+                  <TableHead>Data</TableHead>
+                  <TableHead>Integração</TableHead>
+                  <TableHead>OrderId</TableHead>
+                  <TableHead>Cliente</TableHead>
                   <TableHead className="text-center">Itens</TableHead>
                   <TableHead className="text-right">Valor Total</TableHead>
-                  <TableHead>Status Venda</TableHead>
-                  <TableHead>Status ERP</TableHead>
-                  <TableHead>Data / Hora</TableHead>
+                  <TableHead>Status pedido</TableHead>
+                  <TableHead>Status importação</TableHead>
                   <TableHead className="text-right">Ações</TableHead>
                 </TableRow>
               </TableHeader>
               <TableBody>
                 {paginatedOrders.map((order) => (
                   <TableRow key={order.id} className="hover:bg-muted/30">
-                    <TableCell className="font-mono text-xs font-semibold text-foreground">
-                      {order.marketplaceOrderId}
+                    <TableCell className="text-xs text-muted-foreground whitespace-nowrap">
+                      {formatDateTime(order.createdAtUtc)}
                     </TableCell>
                     <TableCell>
                       <Badge variant="outline" className="text-[11px]">
-                        {order.channelName}
+                        {order.channelName || order.integrationName || "-"}
                       </Badge>
+                    </TableCell>
+                    <TableCell className="font-mono text-xs font-semibold text-foreground">
+                      {order.orderId || order.marketplaceOrderId}
                     </TableCell>
                     <TableCell>
                       <div className="flex flex-col">
@@ -328,20 +386,14 @@ export function OrdersPage() {
                       {formatCurrency(order.totalAmount)}
                     </TableCell>
                     <TableCell>
-                      <Badge variant={getStatusBadgeVariant(order.status)} className="text-[10px]">
-                        {order.status}
-                      </Badge>
+                      <StatusBadge tone={getOrderBackendStatusTone(order.statusOrder)}>
+                        {getOrderBackendStatusLabel(order.statusOrder)}
+                      </StatusBadge>
                     </TableCell>
                     <TableCell>
-                      <Badge
-                        variant={order.erpDownloadStatus === "BAIXADO" ? "success" : "secondary"}
-                        className="text-[10px]"
-                      >
-                        {order.erpDownloadStatus}
-                      </Badge>
-                    </TableCell>
-                    <TableCell className="text-xs text-muted-foreground">
-                      {formatDateTime(order.createdAtUtc)}
+                      <StatusBadge tone={getOrderImportStatusTone(order.importStatus)}>
+                        {getOrderImportStatusLabel(order.importStatus)}
+                      </StatusBadge>
                     </TableCell>
                     <TableCell className="text-right">
                       <Button
@@ -402,10 +454,10 @@ export function OrdersPage() {
               <div className="flex items-center justify-between">
                 <DialogTitle className="text-lg flex items-center gap-2">
                   <ClipboardList className="size-5 text-primary" />
-                  Pedido #{selectedOrder.marketplaceOrderId}
+                  Pedido #{selectedOrder.orderId || selectedOrder.marketplaceOrderId}
                 </DialogTitle>
                 <Badge variant="outline" className="text-xs">
-                  {selectedOrder.channelName}
+                  {selectedOrder.channelName || selectedOrder.integrationName}
                 </Badge>
               </div>
               <DialogDescription className="text-xs">
@@ -444,18 +496,27 @@ export function OrdersPage() {
                     />
                   </div>
                   <div>
-                    <label className="font-semibold text-foreground">Status da Venda</label>
+                    <label className="font-semibold text-foreground">Status do Pedido</label>
                     <select
-                      value={formStatus}
-                      onChange={(e) => setFormStatus(e.target.value as any)}
+                      value={formStatusOrder}
+                      onChange={(e) => setFormStatusOrder(Number(e.target.value))}
                       disabled={isLockedByOther}
                       className="mt-1 h-9 w-full rounded-lg border border-input bg-card px-3 text-xs text-foreground focus:outline-none focus:ring-1 focus:ring-ring"
                     >
-                      <option value="APROVADO">APROVADO</option>
-                      <option value="PENDENTE">PENDENTE</option>
-                      <option value="FATURADO">FATURADO</option>
-                      <option value="ENTREGUE">ENTREGUE</option>
-                      <option value="CANCELADO">CANCELADO</option>
+                      <option value={1}>Pedido recebido</option>
+                      <option value={2}>Aguardando pagamento</option>
+                      <option value={3}>Pagamento recebido</option>
+                      <option value={4}>Pagamento cancelado</option>
+                      <option value={5}>Pedido em análise</option>
+                      <option value={6}>Pedido em separação</option>
+                      <option value={7}>Pedido faturado</option>
+                      <option value={8}>Pedido enviado</option>
+                      <option value={9}>Pedido entregue</option>
+                      <option value={10}>Pedido cancelado</option>
+                      <option value={11}>Pedido devolvido</option>
+                      <option value={12}>Exceção no transporte</option>
+                      <option value={13}>Boleto vencido</option>
+                      <option value={14}>Cancelamento solicitado</option>
                     </select>
                   </div>
                   <div>

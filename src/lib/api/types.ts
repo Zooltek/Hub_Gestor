@@ -114,14 +114,19 @@ export interface OrderItemDto {
 export interface CustomerOrderDto {
   id: string;
   marketplaceOrderId: string;
+  orderId?: string;
+  fileName?: string;
+  integrationName?: string;
   channel: string;
   channelName: string;
   customerName: string;
   customerDocument: string;
   totalAmount: number;
   itemsCount: number;
-  status: "APROVADO" | "PENDENTE" | "FATURADO" | "ENTREGUE" | "CANCELADO";
-  erpDownloadStatus: "PENDENTE" | "BAIXADO" | "ERRO";
+  statusOrder?: number | string | null;
+  importStatus?: string | null;
+  status: string;
+  erpDownloadStatus: string;
   createdAtUtc: string;
   updatedAtUtc: string;
   items: OrderItemDto[];

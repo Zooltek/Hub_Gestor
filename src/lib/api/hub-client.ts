@@ -1,4 +1,5 @@
 import { http, toErrorMessage } from "./http";
+import { getOrderBackendStatusLabel, getOrderImportStatusLabel } from "../status";
 import type {
   SalesOverviewKPIs,
   SalesEvolutionPoint,
@@ -233,37 +234,26 @@ function parseOrderFromApi(raw: any): CustomerOrderDto {
     raw.paymentMethod ||
     "Não informado";
 
-  const statusMap: Record<string | number, CustomerOrderDto["status"]> = {
-    0: "PENDENTE",
-    1: "APROVADO",
-    2: "FATURADO",
-    3: "ENTREGUE",
-    4: "CANCELADO",
-    "APROVADO": "APROVADO",
-    "FATURADO": "FATURADO",
-    "ENTREGUE": "ENTREGUE",
-    "CANCELADO": "CANCELADO",
-    "PENDENTE": "PENDENTE",
-    "pedido_recebido": "PENDENTE",
-    "pagamento_recebido": "APROVADO",
-    "pedido_faturado": "FATURADO",
-    "pedido_entregue": "ENTREGUE",
-    "pedido_cancelado": "CANCELADO",
-  };
-
-  const status = statusMap[raw.statusOrder] || statusMap[orderSection.CodStatus] || statusMap[orderSection.codStatus] || "APROVADO";
-  const erpDownloadStatus = raw.status ? "BAIXADO" : "PENDENTE";
+  const statusOrder = raw.statusOrder ?? orderSection.CodStatus ?? orderSection.codStatus ?? 1;
+  const importStatus = raw.importStatus ?? (raw.status ? "imported" : "not_downloaded");
+  const status = getOrderBackendStatusLabel(statusOrder);
+  const erpDownloadStatus = getOrderImportStatusLabel(importStatus);
   const channelName = raw.integrationName || raw.channelName || raw.channel || "Canal Integrado";
 
   return {
     id: raw.id || raw.importId || `ord_${Math.random().toString(36).slice(2, 9)}`,
     marketplaceOrderId,
+    orderId: raw.orderId || marketplaceOrderId,
+    fileName: raw.fileName || "",
+    integrationName: channelName,
     channel: channelName.toLowerCase().replace(/\s+/g, ""),
     channelName,
     customerName,
     customerDocument,
     totalAmount,
     itemsCount: items.length || 0,
+    statusOrder,
+    importStatus,
     status,
     erpDownloadStatus,
     createdAtUtc: raw.createdAt || raw.createdOnUtc || new Date().toISOString(),
