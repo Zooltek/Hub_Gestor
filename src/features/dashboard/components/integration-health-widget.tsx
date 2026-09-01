@@ -19,11 +19,11 @@ export function IntegrationHealthWidget({ health }: IntegrationHealthWidgetProps
             <span>Saúde das Integrações</span>
           </CardTitle>
           <Badge
-            variant="success"
+            variant={health.desktop.status === "online" ? "success" : "destructive"}
             className="flex items-center gap-1 text-[11px]"
           >
             <span className="size-2 rounded-full bg-current animate-pulse" />
-            Nuvem Operacional
+            {health.desktop.status === "online" ? "Nuvem Operacional" : "Desconectado"}
           </Badge>
         </div>
         <CardDescription className="text-xs">
@@ -34,16 +34,16 @@ export function IntegrationHealthWidget({ health }: IntegrationHealthWidgetProps
       <CardContent className="flex flex-col gap-4">
         {/* Status items */}
         <div className="grid gap-2.5">
-          {/* Online Cloud ERP */}
+          {/* Online Cloud ERP via API REST */}
           <div className="flex items-center justify-between rounded-lg border border-border/60 bg-muted/20 p-3">
             <div className="flex items-center gap-3">
-              <div className="p-2 rounded-lg bg-emerald-500/10 text-emerald-400">
+              <div className="p-2 rounded-lg bg-purple-500/10 text-purple-400">
                 <Globe className="size-4" />
               </div>
               <div>
-                <p className="text-xs font-semibold text-foreground">Bling! ERP (Nuvem API v3)</p>
+                <p className="text-xs font-semibold text-foreground">API REST Cloud (ERP Próprio)</p>
                 <p className="text-[11px] text-muted-foreground">
-                  Token Ativo • Latência 142ms
+                  Comunicação Direta HTTPS • Webhooks Ativos
                 </p>
               </div>
             </div>
@@ -52,7 +52,7 @@ export function IntegrationHealthWidget({ health }: IntegrationHealthWidgetProps
                 Conectado
               </span>
               <p className="text-[10px] text-muted-foreground/80">
-                Ping: {formatDateTime(health.desktop.lastPingUtc)}
+                Status: Ativo
               </p>
             </div>
           </div>
@@ -66,7 +66,7 @@ export function IntegrationHealthWidget({ health }: IntegrationHealthWidgetProps
               <div>
                 <p className="text-xs font-semibold text-foreground">Envio para Marketplaces</p>
                 <p className="text-[11px] text-muted-foreground">
-                  {health.productSync.totalBatches24h} lotes nas últimas 24h
+                  {health.productSync.totalBatches24h} lotes registrados
                 </p>
               </div>
             </div>
@@ -89,20 +89,26 @@ export function IntegrationHealthWidget({ health }: IntegrationHealthWidgetProps
           {/* Order Sync */}
           <div className="flex items-center justify-between rounded-lg border border-border/60 bg-muted/20 p-3">
             <div className="flex items-center gap-3">
-              <div className="p-2 rounded-lg bg-purple-500/10 text-purple-400">
+              <div className="p-2 rounded-lg bg-emerald-500/10 text-emerald-400">
                 <CheckCircle2 className="size-4" />
               </div>
               <div>
-                <p className="text-xs font-semibold text-foreground">Envio de Vendas ao ERP</p>
+                <p className="text-xs font-semibold text-foreground">Sincronização de Pedidos</p>
                 <p className="text-[11px] text-muted-foreground">
-                  {health.orderSync.totalOrders24h} pedidos enviados via API
+                  {health.orderSync.totalOrders24h} pedidos sincronizados
                 </p>
               </div>
             </div>
             <div className="text-right">
-              <Badge variant="success" className="text-[10px] px-1.5 py-0">
-                Fila Zerada
-              </Badge>
+              {health.orderSync.pendingErpDownload > 0 ? (
+                <Badge variant="warning" className="text-[10px] px-1.5 py-0">
+                  {health.orderSync.pendingErpDownload} pendente(s)
+                </Badge>
+              ) : (
+                <Badge variant="success" className="text-[10px] px-1.5 py-0">
+                  Operacional
+                </Badge>
+              )}
               <p className="text-[10px] text-muted-foreground/80 mt-0.5">
                 Último: {formatDateTime(health.orderSync.lastOrderUtc)}
               </p>
@@ -110,34 +116,16 @@ export function IntegrationHealthWidget({ health }: IntegrationHealthWidgetProps
           </div>
         </div>
 
-        {/* Active Alerts */}
-        {health.alerts.length > 0 && (
-          <div className="flex flex-col gap-2 pt-2 border-t border-border/50">
-            <span className="text-[11px] font-semibold uppercase tracking-wider text-muted-foreground">
-              Alertas do Catálogo
-            </span>
-            {health.alerts.map((alert) => (
-              <div
-                key={alert.id}
-                className="flex items-start gap-2.5 rounded-lg border border-amber-500/30 bg-amber-500/10 p-2.5 text-xs text-amber-200"
-              >
-                <AlertTriangle className="size-4 shrink-0 text-amber-400 mt-0.5" />
-                <div className="flex-1">
-                  <p className="font-semibold text-amber-300">{alert.title}</p>
-                  <p className="text-[11px] text-amber-200/80 mt-0.5">{alert.description}</p>
-                  {alert.actionUrl && (
-                    <Button asChild size="sm" variant="outline" className="mt-2 h-6 px-2 text-[11px]">
-                      <Link to={alert.actionUrl}>
-                        {alert.actionLabel || "Resolver"}
-                        <ArrowUpRight className="size-3 ml-1 inline" />
-                      </Link>
-                    </Button>
-                  )}
-                </div>
-              </div>
-            ))}
-          </div>
-        )}
+        {/* Action Link to Health Central */}
+        <div className="flex items-center justify-between pt-1 border-t border-border/50 text-xs">
+          <span className="text-muted-foreground">Gateway de Produção</span>
+          <Button asChild variant="ghost" size="sm" className="h-7 text-xs text-primary p-0 hover:bg-transparent">
+            <Link to="/saude">
+              Ver Central de Saúde
+              <ArrowUpRight className="size-3.5 ml-1" />
+            </Link>
+          </Button>
+        </div>
       </CardContent>
     </Card>
   );

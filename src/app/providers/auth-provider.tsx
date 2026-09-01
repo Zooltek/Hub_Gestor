@@ -17,14 +17,33 @@ interface AuthContextType {
 
 const STORAGE_KEY = "hub_gerencial_auth";
 
+function parseJwtClaims(token?: string) {
+  if (!token || typeof token !== "string" || !token.includes(".")) {
+    return null;
+  }
+  try {
+    const base64Url = token.split(".")[1];
+    const base64 = base64Url.replace(/-/g, "+").replace(/_/g, "/");
+    const jsonPayload = decodeURIComponent(
+      atob(base64)
+        .split("")
+        .map((c) => "%" + ("00" + c.charCodeAt(0).toString(16)).slice(-2))
+        .join("")
+    );
+    return JSON.parse(jsonPayload);
+  } catch {
+    return null;
+  }
+}
+
 // Default account: Cliente real Amura Teste
 const DEFAULT_AMURA_TESTE_USER: AuthUser = {
-  id: "6a9218d05e09ae4df7465e34",
-  username: "contato@amura.com.br",
-  email: "contato@amura.com.br",
+  id: "6a96e389bc3f49ca84122eb6",
+  username: "amura@amura.com.br",
+  email: "amura@amura.com.br",
   displayName: "Amura Teste",
   role: "Manager",
-  customerId: "6a9218d05e09ae4df7465e34",
+  customerId: "6a96e389bc3f49ca84122eb6",
   customerName: "Amura Teste",
   token: "jwt-amura-teste-session",
 };
@@ -64,15 +83,37 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         consumerSecret: credentials.consumerSecret,
       });
 
+      const token = response?.token;
+      const claims = parseJwtClaims(token) || {};
+
+      const effectiveCustomerId =
+        response?.customerId ||
+        claims?.CustomerId ||
+        response?.testCustomerId ||
+        response?.userId ||
+        "6a96e389bc3f49ca84122eb6";
+
+      const effectiveEmail =
+        claims?.Email ||
+        response?.email ||
+        (credentials.username?.includes("@") ? credentials.username : "amura@amura.com.br");
+
+      const effectiveName =
+        claims?.Company ||
+        response?.customerName ||
+        response?.displayName ||
+        response?.company ||
+        "Amura Teste";
+
       const authUser: AuthUser = {
-        id: response?.customerId || "6a9218d05e09ae4df7465e34",
-        username: credentials.username,
-        email: response?.email || "contato@amura.com.br",
-        displayName: response?.customerName || "Amura Teste",
+        id: effectiveCustomerId,
+        username: effectiveEmail,
+        email: effectiveEmail,
+        displayName: effectiveName,
         role: "Manager",
-        customerId: response?.customerId || "6a9218d05e09ae4df7465e34",
-        customerName: response?.customerName || "Amura Teste",
-        token: response?.token || `jwt-${Date.now()}`,
+        customerId: effectiveCustomerId,
+        customerName: effectiveName,
+        token: token || `jwt-${Date.now()}`,
       };
 
       setUser(authUser);

@@ -13,7 +13,7 @@ const baseURL = resolveBaseUrl();
 
 export const http = axios.create({
   baseURL,
-  timeout: 10000,
+  timeout: 30000,
 });
 
 http.interceptors.request.use((config) => {

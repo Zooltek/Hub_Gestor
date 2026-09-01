@@ -3,6 +3,7 @@ import { Outlet, useLocation, Link } from "react-router-dom";
 import { AppSidebar } from "./app-sidebar";
 import { Bell, ChevronRight, Menu } from "lucide-react";
 import { Button } from "@/components/ui/button";
+import { toast } from "sonner";
 
 const ROUTE_LABELS: Record<string, string> = {
   "": "Dashboard",
@@ -67,9 +68,14 @@ export function AppShell() {
               <span className="sm:hidden">Online</span>
             </Link>
 
-            <Button variant="ghost" size="icon" className="size-8 relative">
+            <Button
+              variant="ghost"
+              size="icon"
+              className="size-8 relative"
+              onClick={() => toast.info("Nenhuma nova notificação no momento.")}
+              title="Notificações"
+            >
               <Bell className="size-4 text-muted-foreground" />
-              <span className="absolute top-1.5 right-1.5 size-2 rounded-full bg-amber-400" />
             </Button>
           </div>
         </header>

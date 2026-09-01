@@ -1,5 +1,5 @@
-import { useState } from "react";
-import { Layers, RefreshCw, AlertTriangle, CheckCircle, FileText, ArrowRight, Eye, ShieldAlert } from "lucide-react";
+import { useState, useEffect } from "react";
+import { Layers, RefreshCw, AlertTriangle, CheckCircle, FileText, ArrowRight, Eye, ShieldAlert, PackageX } from "lucide-react";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
@@ -21,15 +21,40 @@ import {
 } from "@/components/ui/dialog";
 import { ConcurrencyBanner } from "@/components/shared/concurrency-banner";
 import { useConcurrencyLock } from "@/hooks/use-concurrency-lock";
-import { MOCK_PRODUCT_BATCHES } from "@/lib/api/mock-data";
+import { useAuth } from "@/app/providers/auth-provider";
+import { fetchProductBatches } from "@/lib/api/hub-client";
 import type { ProductBatchDto } from "@/lib/api/types";
 import { formatDateTime } from "@/lib/utils";
 import { toast } from "sonner";
 
 export function ProductBatchesPage() {
-  const [batches, setBatches] = useState<ProductBatchDto[]>(MOCK_PRODUCT_BATCHES);
+  const { user } = useAuth();
+  const [batches, setBatches] = useState<ProductBatchDto[]>([]);
   const [selectedBatch, setSelectedBatch] = useState<ProductBatchDto | null>(null);
   const [isEditing, setIsEditing] = useState(false);
+  const [isLoading, setIsLoading] = useState(false);
+
+  const loadBatches = async (showToast = false) => {
+    if (!user?.customerId) return;
+    setIsLoading(true);
+    try {
+      const data = await fetchProductBatches(user.customerId);
+      setBatches(data || []);
+      if (showToast) {
+        toast.success(`Lotes sincronizados com o Hub de Produção! (${data?.length || 0} lotes)`);
+      }
+    } catch (error) {
+      if (showToast) {
+        toast.error("Erro ao sincronizar lotes da API.");
+      }
+    } finally {
+      setIsLoading(false);
+    }
+  };
+
+  useEffect(() => {
+    loadBatches();
+  }, [user?.customerId]);
 
   const { activeLock, isLockedByMe, isLockedByOther, acquireLock, releaseLock } = useConcurrencyLock(
     "batch",
@@ -75,7 +100,7 @@ export function ProductBatchesPage() {
             )
           );
           handleCloseBatch();
-          return `Lote ${selectedBatch.batchNumber} reprocessado com 100% de sucesso!`;
+          return `Lote ${selectedBatch.batchNumber} reprocessado com sucesso na API!`;
         },
         error: "Falha ao reprocessar lote.",
       }
@@ -91,17 +116,18 @@ export function ProductBatchesPage() {
             Lotes & Envio de Produtos
           </h1>
           <p className="text-sm text-muted-foreground">
-            Acompanhe o pipeline de sincronização de produtos enviados do seu ERP para os marketplaces.
+            Acompanhe o pipeline de sincronização de produtos enviados do seu ERP para os marketplaces em tempo real.
           </p>
         </div>
 
         <Button
           variant="outline"
           size="sm"
-          onClick={() => toast.success("Lista de lotes atualizada!")}
+          onClick={() => loadBatches(true)}
+          disabled={isLoading}
         >
-          <RefreshCw className="size-3.5 mr-1.5" />
-          Atualizar Lotes
+          <RefreshCw className={`size-3.5 mr-1.5 ${isLoading ? "animate-spin" : ""}`} />
+          {isLoading ? "Sincronizando..." : "Atualizar Lotes"}
         </Button>
       </div>
 
@@ -113,7 +139,7 @@ export function ProductBatchesPage() {
               <Layers className="size-5" />
             </div>
             <div>
-              <p className="text-xs text-muted-foreground">Total de Lotes (24h)</p>
+              <p className="text-xs text-muted-foreground">Total de Lotes</p>
               <p className="text-xl font-bold text-foreground">{batches.length}</p>
             </div>
           </CardContent>
@@ -139,7 +165,7 @@ export function ProductBatchesPage() {
               <AlertTriangle className="size-5" />
             </div>
             <div>
-              <p className="text-xs text-muted-foreground">Lotes com Divergência/Erro</p>
+              <p className="text-xs text-muted-foreground">Lotes com Alertas/Erros</p>
               <p className="text-xl font-bold text-amber-400">
                 {batches.filter((b) => b.errorItems > 0).length}
               </p>
@@ -151,79 +177,90 @@ export function ProductBatchesPage() {
       {/* Batches Table */}
       <Card className="border-border/80">
         <CardContent className="p-0">
-          <Table>
-            <TableHeader>
-              <TableRow>
-                <TableHead>Número do Lote</TableHead>
-                <TableHead>Arquivo de Origem</TableHead>
-                <TableHead>Canal Destino</TableHead>
-                <TableHead className="text-center">Total Itens</TableHead>
-                <TableHead className="text-center">Sucesso</TableHead>
-                <TableHead className="text-center">Erros</TableHead>
-                <TableHead>Data / Hora</TableHead>
-                <TableHead>Status</TableHead>
-                <TableHead className="text-right">Ação</TableHead>
-              </TableRow>
-            </TableHeader>
-            <TableBody>
-              {batches.map((batch) => (
-                <TableRow key={batch.id} className="hover:bg-muted/30">
-                  <TableCell className="font-mono text-xs font-semibold text-foreground">
-                    {batch.batchNumber}
-                  </TableCell>
-                  <TableCell className="font-mono text-[11px] text-muted-foreground">
-                    {batch.fileName}
-                  </TableCell>
-                  <TableCell>
-                    <Badge variant="outline" className="text-[11px]">
-                      {batch.channelName}
-                    </Badge>
-                  </TableCell>
-                  <TableCell className="text-center font-medium text-xs">
-                    {batch.totalItems}
-                  </TableCell>
-                  <TableCell className="text-center text-xs font-semibold text-emerald-400">
-                    {batch.successItems}
-                  </TableCell>
-                  <TableCell className="text-center text-xs">
-                    {batch.errorItems > 0 ? (
-                      <span className="font-bold text-amber-400">{batch.errorItems}</span>
-                    ) : (
-                      <span className="text-muted-foreground">0</span>
-                    )}
-                  </TableCell>
-                  <TableCell className="text-xs text-muted-foreground">
-                    {formatDateTime(batch.startedAtUtc)}
-                  </TableCell>
-                  <TableCell>
-                    <Badge
-                      variant={
-                        batch.status === "CONCLUIDO" && batch.errorItems === 0
-                          ? "success"
-                          : batch.errorItems > 0
-                          ? "warning"
-                          : "secondary"
-                      }
-                      className="text-[10px]"
-                    >
-                      {batch.errorItems > 0 ? "Com Alertas" : batch.status}
-                    </Badge>
-                  </TableCell>
-                  <TableCell className="text-right">
-                    <Button
-                      variant="ghost"
-                      size="sm"
-                      onClick={() => handleOpenBatch(batch)}
-                      className="h-8 text-xs"
-                    >
-                      <Eye className="size-3.5 mr-1" />
-                      Diagnóstico
-                    </Button>
-                  </TableCell>
+          {isLoading ? (
+            <div className="p-16 flex flex-col items-center justify-center gap-3 text-center">
+              <div className="relative">
+                <RefreshCw className="size-8 animate-spin text-primary" />
+                <span className="absolute inset-0 rounded-full bg-primary/20 animate-ping" />
+              </div>
+              <p className="text-sm font-semibold text-foreground mt-2">Processando e sincronizando lotes com o Hub Central...</p>
+              <p className="text-xs text-muted-foreground max-w-sm">
+                Verificando histórico de arquivos importados e validações da esteira. Aguarde um instante.
+              </p>
+            </div>
+          ) : batches.length === 0 ? (
+            <div className="p-12 flex flex-col items-center justify-center gap-3 text-muted-foreground">
+              <PackageX className="size-8 text-muted-foreground/60" />
+              <p className="text-sm font-medium text-foreground">Nenhum lote registrado</p>
+              <p className="text-xs text-muted-foreground">
+                Nenhum arquivo de lote foi importado ainda pelo Hub.
+              </p>
+            </div>
+          ) : (
+            <Table>
+              <TableHeader>
+                <TableRow>
+                  <TableHead>Arquivo de Origem / Lote</TableHead>
+                  <TableHead className="text-center">Total Itens</TableHead>
+                  <TableHead className="text-center">Sucesso</TableHead>
+                  <TableHead className="text-center">Erros</TableHead>
+                  <TableHead>Data / Hora</TableHead>
+                  <TableHead>Status</TableHead>
+                  <TableHead className="text-right">Ação</TableHead>
                 </TableRow>
-              ))}
-            </TableBody>
-          </Table>
+              </TableHeader>
+              <TableBody>
+                {batches.map((batch) => (
+                  <TableRow key={batch.id} className="hover:bg-muted/30">
+                    <TableCell className="font-mono text-xs font-semibold text-foreground">
+                      {batch.fileName || batch.batchNumber}
+                    </TableCell>
+                    <TableCell className="text-center font-medium text-xs">
+                      {batch.totalItems}
+                    </TableCell>
+                    <TableCell className="text-center text-xs font-semibold text-emerald-400">
+                      {batch.successItems}
+                    </TableCell>
+                    <TableCell className="text-center text-xs">
+                      {batch.errorItems > 0 ? (
+                        <span className="font-bold text-amber-400">{batch.errorItems}</span>
+                      ) : (
+                        <span className="text-muted-foreground">0</span>
+                      )}
+                    </TableCell>
+                    <TableCell className="text-xs text-muted-foreground">
+                      {formatDateTime(batch.startedAtUtc)}
+                    </TableCell>
+                    <TableCell>
+                      <Badge
+                        variant={
+                          batch.status === "CONCLUIDO" && batch.errorItems === 0
+                            ? "success"
+                            : batch.errorItems > 0
+                            ? "warning"
+                            : "secondary"
+                        }
+                        className="text-[10px]"
+                      >
+                        {batch.errorItems > 0 ? "Com Alertas" : batch.status}
+                      </Badge>
+                    </TableCell>
+                    <TableCell className="text-right">
+                      <Button
+                        variant="ghost"
+                        size="sm"
+                        onClick={() => handleOpenBatch(batch)}
+                        className="h-8 text-xs"
+                      >
+                        <Eye className="size-3.5 mr-1" />
+                        Diagnóstico
+                      </Button>
+                    </TableCell>
+                  </TableRow>
+                ))}
+              </TableBody>
+            </Table>
+          )}
         </CardContent>
       </Card>
 

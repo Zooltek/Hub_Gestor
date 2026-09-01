@@ -1,5 +1,5 @@
-import { useState } from "react";
-import { Users, UserPlus, Shield, KeyRound, Check, X, Trash2 } from "lucide-react";
+import { useState, useEffect } from "react";
+import { Users, UserPlus, Shield, KeyRound, Check, X, Trash2, UserCheck, UserX } from "lucide-react";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -31,31 +31,32 @@ interface TeamMember {
   email: string;
   role: "Manager" | "Operator";
   active: boolean;
+  isAdmin?: boolean;
   createdAt: string;
 }
 
 export function TeamPage() {
   const { user } = useAuth();
-  const [members, setMembers] = useState<TeamMember[]>([
-    {
-      id: "m_1",
-      username: user?.username || "gestor.loja",
-      displayName: user?.displayName || "Carlos Gestor",
-      email: user?.email || "gestor@lojaexemplo.com.br",
-      role: "Manager",
-      active: true,
-      createdAt: new Date(Date.now() - 30 * 86400000).toISOString(),
-    },
-    {
-      id: "m_2",
-      username: "operador.expedicao",
-      displayName: "Ana Paula Operações",
-      email: "operacoes@lojaexemplo.com.br",
-      role: "Operator",
-      active: true,
-      createdAt: new Date(Date.now() - 10 * 86400000).toISOString(),
-    },
-  ]);
+  const [members, setMembers] = useState<TeamMember[]>([]);
+
+  useEffect(() => {
+    if (user) {
+      setMembers((prev) => {
+        const additionalMembers = prev.filter((m) => !m.isAdmin);
+        const adminMember: TeamMember = {
+          id: "admin_1",
+          username: user.email || user.username || "amura@amura.com.br",
+          displayName: user.displayName || user.customerName || "Amura Teste",
+          email: user.email || "amura@amura.com.br",
+          role: "Manager",
+          active: true,
+          isAdmin: true,
+          createdAt: new Date().toISOString(),
+        };
+        return [adminMember, ...additionalMembers];
+      });
+    }
+  }, [user]);
 
   const [isCreateOpen, setIsCreateOpen] = useState(false);
   const [newUsername, setNewUsername] = useState("");
@@ -63,10 +64,16 @@ export function TeamPage() {
   const [newEmail, setNewEmail] = useState("");
   const [newPassword, setNewPassword] = useState("");
   const [newRole, setNewRole] = useState<"Manager" | "Operator">("Operator");
+  const [userToDelete, setUserToDelete] = useState<TeamMember | null>(null);
 
   const handleCreateUser = () => {
     if (!newUsername || !newName || !newEmail || !newPassword) {
       toast.error("Preencha todos os campos obrigatórios.");
+      return;
+    }
+
+    if (members.some((m) => m.username.toLowerCase() === newUsername.trim().toLowerCase())) {
+      toast.error("Já existe um usuário cadastrado com este login.");
       return;
     }
 
@@ -77,11 +84,12 @@ export function TeamPage() {
       email: newEmail.trim(),
       role: newRole,
       active: true,
+      isAdmin: false,
       createdAt: new Date().toISOString(),
     };
 
     setMembers((prev) => [...prev, created]);
-    toast.success(`Usuário ${created.username} criado com sucesso!`);
+    toast.success(`Usuário ${created.displayName} (${created.username}) cadastrado com sucesso!`);
     setIsCreateOpen(false);
     setNewUsername("");
     setNewName("");
@@ -96,21 +104,33 @@ export function TeamPage() {
     toast.info("Status do usuário alterado.");
   };
 
+  const handleDeleteUser = (member: TeamMember) => {
+    if (member.isAdmin) {
+      toast.error("O usuário administrador principal não pode ser excluído.");
+      return;
+    }
+
+    setMembers((prev) => prev.filter((m) => m.id !== member.id));
+    toast.success(`Usuário ${member.displayName} removido com sucesso.`);
+    setUserToDelete(null);
+  };
+
   return (
     <div className="flex flex-col gap-6">
       {/* Header */}
       <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
         <div>
-          <h1 className="text-2xl font-bold tracking-tight text-foreground">
+          <h1 className="text-2xl font-bold tracking-tight text-foreground flex items-center gap-2">
+            <Users className="size-6 text-primary" />
             Equipe e Usuários
           </h1>
           <p className="text-sm text-muted-foreground">
-            Gerencie as credenciais e permissões de acesso ao Hub Gerencial da sua empresa.
+            Gerencie as credenciais e permissões de acesso ao Hub Gestor da sua empresa.
           </p>
         </div>
 
-        <Button size="sm" onClick={() => setIsCreateOpen(true)}>
-          <UserPlus className="size-3.5 mr-1.5" />
+        <Button size="sm" onClick={() => setIsCreateOpen(true)} className="gap-1.5">
+          <UserPlus className="size-3.5" />
           Novo Usuário
         </Button>
       </div>
@@ -122,7 +142,7 @@ export function TeamPage() {
           <div className="text-xs">
             <p className="font-semibold text-foreground">Isolamento Multi-Tenant Garantido</p>
             <p className="text-muted-foreground mt-0.5">
-              Todos os usuários criados aqui pertencem exclusivamente à conta <strong>{user?.customerName}</strong> e têm acesso apenas aos seus pedidos, lotes e relatórios.
+              Todos os usuários criados aqui pertencem exclusivamente à conta <strong>{user?.customerName || "Amura Teste"}</strong> e têm acesso apenas aos seus pedidos, lotes e relatórios.
             </p>
           </div>
         </CardContent>
@@ -135,19 +155,26 @@ export function TeamPage() {
             <TableHeader>
               <TableRow>
                 <TableHead>Nome</TableHead>
-                <TableHead>Usuário</TableHead>
+                <TableHead>Usuário / Login</TableHead>
                 <TableHead>E-mail</TableHead>
                 <TableHead>Perfil</TableHead>
                 <TableHead>Data Cadastro</TableHead>
                 <TableHead>Status</TableHead>
-                <TableHead className="text-right">Ação</TableHead>
+                <TableHead className="text-right">Ações</TableHead>
               </TableRow>
             </TableHeader>
             <TableBody>
               {members.map((member) => (
                 <TableRow key={member.id} className="hover:bg-muted/30">
                   <TableCell className="font-medium text-xs text-foreground">
-                    {member.displayName}
+                    <div className="flex items-center gap-2">
+                      <span>{member.displayName}</span>
+                      {member.isAdmin && (
+                        <Badge variant="outline" className="text-[9px] border-primary/40 text-primary py-0 px-1">
+                          Admin
+                        </Badge>
+                      )}
+                    </div>
                   </TableCell>
                   <TableCell className="font-mono text-xs text-muted-foreground">
                     {member.username}
@@ -169,16 +196,34 @@ export function TeamPage() {
                     </Badge>
                   </TableCell>
                   <TableCell className="text-right">
-                    {member.id !== user?.id && (
-                      <Button
-                        variant="ghost"
-                        size="sm"
-                        onClick={() => handleToggleActive(member.id)}
-                        className="h-8 text-xs"
-                      >
-                        {member.active ? "Desativar" : "Ativar"}
-                      </Button>
-                    )}
+                    <div className="flex items-center justify-end gap-1.5">
+                      {!member.isAdmin ? (
+                        <>
+                          <Button
+                            variant="ghost"
+                            size="sm"
+                            onClick={() => handleToggleActive(member.id)}
+                            className="h-8 text-xs"
+                          >
+                            {member.active ? "Desativar" : "Ativar"}
+                          </Button>
+
+                          <Button
+                            variant="ghost"
+                            size="icon"
+                            onClick={() => setUserToDelete(member)}
+                            className="size-8 text-destructive hover:text-destructive hover:bg-destructive/10 cursor-pointer"
+                            title="Excluir Usuário"
+                          >
+                            <Trash2 className="size-3.5" />
+                          </Button>
+                        </>
+                      ) : (
+                        <span className="text-[11px] text-muted-foreground italic px-2">
+                          Protegido
+                        </span>
+                      )}
+                    </div>
                   </TableCell>
                 </TableRow>
               ))}
@@ -191,7 +236,10 @@ export function TeamPage() {
       <Dialog open={isCreateOpen} onOpenChange={setIsCreateOpen}>
         <DialogContent>
           <DialogHeader>
-            <DialogTitle className="text-base">Cadastrar Novo Usuário</DialogTitle>
+            <DialogTitle className="text-base flex items-center gap-2">
+              <UserPlus className="size-4 text-primary" />
+              Cadastrar Novo Usuário
+            </DialogTitle>
             <DialogDescription className="text-xs">
               Crie credenciais de acesso para um colaborador da sua equipe.
             </DialogDescription>
@@ -203,7 +251,7 @@ export function TeamPage() {
               <Input
                 value={newName}
                 onChange={(e) => setNewName(e.target.value)}
-                placeholder="Ex: João Silva"
+                placeholder="Ex: Carlos Eduardo"
                 className="mt-1 text-xs"
               />
             </div>
@@ -212,7 +260,7 @@ export function TeamPage() {
               <Input
                 value={newUsername}
                 onChange={(e) => setNewUsername(e.target.value)}
-                placeholder="Ex: joao.silva"
+                placeholder="Ex: carlos.eduardo"
                 className="mt-1 text-xs"
               />
             </div>
@@ -222,7 +270,7 @@ export function TeamPage() {
                 type="email"
                 value={newEmail}
                 onChange={(e) => setNewEmail(e.target.value)}
-                placeholder="Ex: joao@loja.com.br"
+                placeholder="Ex: carlos@empresa.com.br"
                 className="mt-1 text-xs"
               />
             </div>
@@ -243,8 +291,8 @@ export function TeamPage() {
                 onChange={(e) => setNewRole(e.target.value as any)}
                 className="mt-1 h-9 w-full rounded-lg border border-input bg-card px-3 text-xs text-foreground focus:outline-none focus:ring-1 focus:ring-ring"
               >
-                <option value="Operator">Operador (Visualização e gestão diária)</option>
-                <option value="Manager">Gestor (Acesso total e gestão de equipe)</option>
+                <option value="Operator">Operador (Visualização e gestão de pedidos)</option>
+                <option value="Manager">Gestor (Acesso total)</option>
               </select>
             </div>
           </div>
@@ -259,6 +307,36 @@ export function TeamPage() {
           </DialogFooter>
         </DialogContent>
       </Dialog>
+
+      {/* Delete User Confirmation Dialog */}
+      {userToDelete && (
+        <Dialog open={Boolean(userToDelete)} onOpenChange={(open) => !open && setUserToDelete(null)}>
+          <DialogContent className="max-w-md">
+            <DialogHeader>
+              <DialogTitle className="text-base text-destructive flex items-center gap-2">
+                <Trash2 className="size-4" />
+                Excluir Usuário
+              </DialogTitle>
+              <DialogDescription className="text-xs">
+                Tem certeza de que deseja remover o usuário <strong>{userToDelete.displayName}</strong> ({userToDelete.username})? Esta ação não pode ser desfeita.
+              </DialogDescription>
+            </DialogHeader>
+
+            <DialogFooter className="gap-2 sm:justify-between">
+              <Button variant="outline" size="sm" onClick={() => setUserToDelete(null)}>
+                Cancelar
+              </Button>
+              <Button
+                variant="destructive"
+                size="sm"
+                onClick={() => handleDeleteUser(userToDelete)}
+              >
+                Excluir Definitivamente
+              </Button>
+            </DialogFooter>
+          </DialogContent>
+        </Dialog>
+      )}
     </div>
   );
 }

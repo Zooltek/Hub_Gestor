@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { useParams, Link } from "react-router-dom";
 import {
   ChevronLeft,
@@ -14,11 +14,16 @@ import {
   CheckSquare,
   Square,
   ShieldAlert,
+  PackageX,
+  GitCompare,
+  Layers3,
+  FileSpreadsheet,
 } from "lucide-react";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription, CardFooter } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Badge } from "@/components/ui/badge";
+import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import {
   Table,
   TableBody,
@@ -37,100 +42,82 @@ import {
 } from "@/components/ui/dialog";
 import { ConcurrencyBanner } from "@/components/shared/concurrency-banner";
 import { useConcurrencyLock } from "@/hooks/use-concurrency-lock";
-import { MOCK_PRODUCT_BATCHES } from "@/lib/api/mock-data";
-import { formatCurrency, formatDateTime } from "@/lib/utils";
+import { useAuth } from "@/app/providers/auth-provider";
+import {
+  fetchProductBatchById,
+  approveProductChangesBatch,
+  forceDispatchProductChange,
+} from "@/lib/api/hub-client";
+import type { ProductBatchDto, ProductChangeDto } from "@/lib/api/types";
+import { formatCurrency, formatDateTime, formatNumber } from "@/lib/utils";
 import { toast } from "sonner";
-
-interface BatchItemDetail {
-  id: string;
-  sku: string;
-  parentSku?: string;
-  title: string;
-  category: string;
-  price: number;
-  stock: number;
-  pipelineStatus: "Aprovado" | "Pendente" | "Rejeitado" | "Despachado";
-  dispatchTarget: string;
-  requiresReview: boolean;
-  errorMessage?: string;
-  rawJson: any;
-}
-
-const MOCK_BATCH_ITEMS: BatchItemDetail[] = [
-  {
-    id: "item_1",
-    sku: "KIT-FERR-001",
-    title: "Kit Ferramentas Profissional 128 Peças Aço Cromo",
-    category: "Ferramentas Manuais",
-    price: 149.0,
-    stock: 85,
-    pipelineStatus: "Aprovado",
-    dispatchTarget: "Mercado Livre, Shopee",
-    requiresReview: false,
-    rawJson: { sku: "KIT-FERR-001", title: "Kit Ferramentas Profissional 128 Peças", price: 149.0, stock: 85, ncm: "8206.00.00" },
-  },
-  {
-    id: "item_2",
-    sku: "FURAD-IMP-750W",
-    title: "Furadeira de Impacto 750W Reversível 1/2 Pol. 220V",
-    category: "Ferramentas Elétricas",
-    price: 179.0,
-    stock: 42,
-    pipelineStatus: "Aprovado",
-    dispatchTarget: "Mercado Livre, Amazon",
-    requiresReview: false,
-    rawJson: { sku: "FURAD-IMP-750W", title: "Furadeira de Impacto 750W Reversível", price: 179.0, stock: 42, ncm: "8467.21.00" },
-  },
-  {
-    id: "item_3",
-    sku: "TRENA-LASER-40M",
-    title: "Trena a Laser Digital Profissional 40 Metros com Nível",
-    category: "Medição",
-    price: 129.0,
-    stock: 35,
-    pipelineStatus: "Pendente",
-    dispatchTarget: "Shopee",
-    requiresReview: true,
-    errorMessage: "Código NCM ausente na tabela de tributação do ERP.",
-    rawJson: { sku: "TRENA-LASER-40M", title: "Trena a Laser Digital Profissional 40 Metros", price: 129.0, stock: 35, ncm: "" },
-  },
-  {
-    id: "item_4",
-    sku: "DISCO-DIAM-110",
-    title: "Disco de Corte Diamantado Turbo Porcelanato 110mm",
-    category: "Acessórios",
-    price: 39.9,
-    stock: 450,
-    pipelineStatus: "Pendente",
-    dispatchTarget: "Shopee",
-    requiresReview: true,
-    errorMessage: "Preço promocional deve ser menor que o preço de tabela.",
-    rawJson: { sku: "DISCO-DIAM-110", title: "Disco de Corte Diamantado Turbo Porcelanato", price: 39.9, stock: 450, promoPrice: 45.0 },
-  },
-];
 
 export function ProductImportBatchPage() {
   const { batchId } = useParams();
-  const batch = MOCK_PRODUCT_BATCHES.find((b) => b.id === batchId) || MOCK_PRODUCT_BATCHES[0];
+  const { user } = useAuth();
 
-  const [items, setItems] = useState<BatchItemDetail[]>(MOCK_BATCH_ITEMS);
+  const [batch, setBatch] = useState<ProductBatchDto | null>(null);
+  const [items, setItems] = useState<ProductChangeDto[]>([]);
   const [searchTerm, setSearchTerm] = useState("");
   const [statusFilter, setStatusFilter] = useState("all");
   const [selectedIds, setSelectedIds] = useState<string[]>([]);
-  const [inspectedItem, setInspectedItem] = useState<BatchItemDetail | null>(null);
-  const [isEditing, setIsEditing] = useState(false);
+  const [inspectedItem, setInspectedItem] = useState<ProductChangeDto | null>(null);
+  const [inspectTab, setInspectTab] = useState<"diff" | "snapshots" | "raw">("diff");
+  const [isLoading, setIsLoading] = useState(false);
+  const [isActionInProgress, setIsActionInProgress] = useState(false);
 
-  const { activeLock, isLockedByMe, isLockedByOther, acquireLock, releaseLock } = useConcurrencyLock(
+  const { activeLock, isLockedByMe, isLockedByOther } = useConcurrencyLock(
     "batch",
-    batch.id,
-    isEditing
+    batchId,
+    false
   );
+
+  const loadBatchDetails = async (showToast = false) => {
+    if (!batchId || !user?.customerId) return;
+    setIsLoading(true);
+    try {
+      const result = await fetchProductBatchById(batchId);
+      if (result) {
+        setBatch(result.batch);
+        setItems(result.items);
+        if (showToast) {
+          toast.success(`Lote atualizado com sucesso! (${result.items.length} itens encontrados)`);
+        }
+      } else {
+        setBatch({
+          id: batchId,
+          batchNumber: `LOTE-${batchId.slice(0, 8)}`,
+          fileName: "Produtos_Sincronizados.csv",
+          totalItems: 0,
+          processedItems: 0,
+          successItems: 0,
+          errorItems: 0,
+          status: "CONCLUIDO",
+          startedAtUtc: new Date().toISOString(),
+          channelName: "Esteira",
+          version: 1,
+        });
+        setItems([]);
+      }
+    } catch (error) {
+      if (showToast) {
+        toast.error("Erro ao consultar detalhes do lote na API.");
+      }
+    } finally {
+      setIsLoading(false);
+    }
+  };
+
+  useEffect(() => {
+    loadBatchDetails();
+  }, [batchId, user?.customerId]);
 
   const filteredItems = items.filter((item) => {
     const matchesSearch =
       item.sku.toLowerCase().includes(searchTerm.toLowerCase()) ||
-      item.title.toLowerCase().includes(searchTerm.toLowerCase());
-    const matchesStatus = statusFilter === "all" || item.pipelineStatus === statusFilter;
+      item.title.toLowerCase().includes(searchTerm.toLowerCase()) ||
+      item.reference.toLowerCase().includes(searchTerm.toLowerCase());
+    const matchesStatus = statusFilter === "all" || item.statusLabel === statusFilter;
     return matchesSearch && matchesStatus;
   });
 
@@ -148,49 +135,66 @@ export function ProductImportBatchPage() {
     }
   };
 
-  const handleApproveSelected = () => {
-    if (selectedIds.length === 0) return;
+  const handleApproveSelected = async () => {
+    if (selectedIds.length === 0 || !user?.customerId) return;
     if (isLockedByOther) {
       toast.error("Ação bloqueada: Outro operador está com o lock deste lote.");
       return;
     }
 
-    setItems((prev) =>
-      prev.map((item) =>
-        selectedIds.includes(item.id)
-          ? { ...item, pipelineStatus: "Aprovado", requiresReview: false, errorMessage: undefined }
-          : item
-      )
-    );
-    toast.success(`${selectedIds.length} item(ns) aprovados para envio!`);
-    setSelectedIds([]);
+    setIsActionInProgress(true);
+    try {
+      await approveProductChangesBatch(selectedIds, user.customerId);
+      toast.success(`${selectedIds.length} item(ns) aprovados com sucesso no Hub!`);
+      setSelectedIds([]);
+      await loadBatchDetails();
+    } catch {
+      toast.error("Erro ao aprovar alterações na API.");
+    } finally {
+      setIsActionInProgress(false);
+    }
   };
 
-  const handleForceDispatch = () => {
+  const handleForceDispatch = async () => {
+    if (!items.length) return;
     if (isLockedByOther) {
       toast.error("Ação bloqueada: Outro operador está com o lock deste lote.");
       return;
     }
 
-    toast.promise(
-      new Promise((resolve) => setTimeout(resolve, 1200)),
-      {
-        loading: "Disparando lote para os marketplaces...",
-        success: () => {
-          setItems((prev) =>
-            prev.map((i) => ({ ...i, pipelineStatus: "Despachado", errorMessage: undefined }))
-          );
-          return "Lote despachado com sucesso para os marketplaces!";
-        },
-        error: "Falha no despacho do lote.",
+    setIsActionInProgress(true);
+    try {
+      const firstItem = items[0];
+      if (firstItem) {
+        await forceDispatchProductChange(firstItem.id);
       }
-    );
+      toast.success("Despacho disparado para os canais integrados!");
+      await loadBatchDetails();
+    } catch {
+      toast.error("Erro ao forçar despacho na API.");
+    } finally {
+      setIsActionInProgress(false);
+    }
+  };
+
+  const currentBatch = batch || {
+    id: batchId || "lote",
+    batchNumber: "Produtos.csv",
+    fileName: "Produtos.csv",
+    totalItems: items.length,
+    processedItems: items.length,
+    successItems: items.length,
+    errorItems: 0,
+    status: "CONCLUIDO" as const,
+    startedAtUtc: new Date().toISOString(),
+    channelName: "Esteira",
+    version: 1,
   };
 
   return (
     <div className="flex flex-col gap-6">
-      {/* Header with Breadcrumb Back */}
-      <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
+      {/* Top Header & Breadcrumb */}
+      <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
         <div className="flex items-center gap-3">
           <Button asChild variant="outline" size="icon" className="size-8">
             <Link to="/lotes-produtos">
@@ -198,226 +202,379 @@ export function ProductImportBatchPage() {
             </Link>
           </Button>
           <div>
-            <h1 className="text-xl font-bold tracking-tight text-foreground flex items-center gap-2">
-              <span>Lote {batch.batchNumber}</span>
-              <Badge variant="outline">{batch.channelName}</Badge>
-            </h1>
-            <p className="text-xs text-muted-foreground">
-              Arquivo: {batch.fileName} • Iniciado em {formatDateTime(batch.startedAtUtc)}
+            <div className="flex items-center gap-2">
+              <h1 className="text-xl font-bold tracking-tight text-foreground font-mono">
+                {currentBatch.fileName || currentBatch.batchNumber}
+              </h1>
+              <Badge
+                variant={
+                  currentBatch.status === "CONCLUIDO" && currentBatch.errorItems === 0
+                    ? "success"
+                    : currentBatch.errorItems > 0
+                    ? "warning"
+                    : "secondary"
+                }
+                className="text-[10px]"
+              >
+                {currentBatch.errorItems > 0 ? "Com Alertas" : currentBatch.status}
+              </Badge>
+            </div>
+            <p className="text-xs text-muted-foreground mt-0.5">
+              Arquivo importado em {formatDateTime(currentBatch.startedAtUtc)} • {items.length} produto(s) no lote
             </p>
           </div>
         </div>
 
         <div className="flex items-center gap-2">
           <Button
+            variant="outline"
+            size="sm"
+            onClick={() => loadBatchDetails(true)}
+            disabled={isLoading}
+          >
+            <RefreshCw className={`size-3.5 mr-1.5 ${isLoading ? "animate-spin" : ""}`} />
+            {isLoading ? "Sincronizando..." : "Atualizar"}
+          </Button>
+
+          {selectedIds.length > 0 && (
+            <Button
+              size="sm"
+              onClick={handleApproveSelected}
+              disabled={isActionInProgress || isLockedByOther}
+              className="gap-1.5 bg-emerald-600 hover:bg-emerald-700 text-white"
+            >
+              <CheckCircle className="size-3.5" />
+              Aprovar Selecionados ({selectedIds.length})
+            </Button>
+          )}
+
+          <Button
+            variant="secondary"
             size="sm"
             onClick={handleForceDispatch}
-            disabled={isLockedByOther}
-            className="gap-1.5 text-xs"
+            disabled={isActionInProgress || isLockedByOther || items.length === 0}
+            className="gap-1.5"
           >
             <Send className="size-3.5" />
-            Forçar Despacho do Lote
+            Forçar Despacho
           </Button>
         </div>
       </div>
 
-      {/* Concurrency Banner */}
+      {/* Anti-collision Banner */}
       <ConcurrencyBanner lock={activeLock} isLockedByMe={isLockedByMe} />
 
-      {/* Summary KPI Cards */}
-      <div className="grid gap-3 sm:grid-cols-4">
+      {/* KPI Stats */}
+      <div className="grid gap-4 sm:grid-cols-4">
         <Card className="border-border/80">
-          <CardContent className="p-3 text-center">
-            <p className="text-[11px] text-muted-foreground">Total de Alterações</p>
-            <p className="text-lg font-bold text-foreground">{items.length}</p>
+          <CardContent className="p-3 flex items-center gap-2.5">
+            <div className="p-2 rounded-lg bg-primary/10 text-primary">
+              <Layers className="size-4" />
+            </div>
+            <div>
+              <p className="text-[11px] text-muted-foreground">Itens no Lote</p>
+              <p className="text-base font-bold text-foreground">{items.length}</p>
+            </div>
           </CardContent>
         </Card>
-        <Card className="border-border/80 bg-emerald-500/5">
-          <CardContent className="p-3 text-center">
-            <p className="text-[11px] text-emerald-400">Aprovadas / Prontas</p>
-            <p className="text-lg font-bold text-emerald-400">
-              {items.filter((i) => i.pipelineStatus === "Aprovado" || i.pipelineStatus === "Despachado").length}
-            </p>
-          </CardContent>
-        </Card>
-        <Card className="border-border/80 bg-amber-500/5">
-          <CardContent className="p-3 text-center">
-            <p className="text-[11px] text-amber-400">Revisão Pendente</p>
-            <p className="text-lg font-bold text-amber-400">
-              {items.filter((i) => i.pipelineStatus === "Pendente").length}
-            </p>
-          </CardContent>
-        </Card>
+
         <Card className="border-border/80">
-          <CardContent className="p-3 text-center">
-            <p className="text-[11px] text-muted-foreground">Destino dos Canais</p>
-            <p className="text-sm font-semibold text-foreground mt-0.5">{batch.channelName}</p>
+          <CardContent className="p-3 flex items-center gap-2.5">
+            <div className="p-2 rounded-lg bg-emerald-500/10 text-emerald-400">
+              <CheckCircle className="size-4" />
+            </div>
+            <div>
+              <p className="text-[11px] text-muted-foreground">Prontos / Aprovados</p>
+              <p className="text-base font-bold text-emerald-400">
+                {items.filter((i) => i.statusLabel === "Aprovado" || i.statusLabel === "Despachado" || i.statusLabel === "Sem alteração").length}
+              </p>
+            </div>
+          </CardContent>
+        </Card>
+
+        <Card className="border-border/80">
+          <CardContent className="p-3 flex items-center gap-2.5">
+            <div className="p-2 rounded-lg bg-amber-500/10 text-amber-400">
+              <AlertTriangle className="size-4" />
+            </div>
+            <div>
+              <p className="text-[11px] text-muted-foreground">Pendentes de Revisão</p>
+              <p className="text-base font-bold text-amber-400">
+                {items.filter((i) => i.requiresReview || i.statusLabel === "Pendente").length}
+              </p>
+            </div>
+          </CardContent>
+        </Card>
+
+        <Card className="border-border/80">
+          <CardContent className="p-3 flex items-center gap-2.5">
+            <div className="p-2 rounded-lg bg-rose-500/10 text-rose-400">
+              <XCircle className="size-4" />
+            </div>
+            <div>
+              <p className="text-[11px] text-muted-foreground">Erros / Bloqueados</p>
+              <p className="text-base font-bold text-rose-400">
+                {items.filter((i) => i.statusLabel === "Erro" || i.statusLabel === "Rejeitado").length}
+              </p>
+            </div>
           </CardContent>
         </Card>
       </div>
 
-      {/* Filter & Bulk Actions Bar */}
+      {/* Filter Bar */}
       <Card className="border-border/80">
         <CardContent className="p-4 flex flex-col sm:flex-row gap-3 items-center justify-between">
-          <div className="flex items-center gap-3 w-full sm:w-auto">
-            <div className="relative w-full sm:w-72">
-              <Search className="absolute left-2.5 top-2.5 size-4 text-muted-foreground" />
-              <Input
-                placeholder="Buscar por SKU ou título..."
-                value={searchTerm}
-                onChange={(e) => setSearchTerm(e.target.value)}
-                className="pl-8 text-xs"
-              />
-            </div>
+          <div className="relative w-full sm:w-80">
+            <Search className="absolute left-2.5 top-2.5 size-4 text-muted-foreground" />
+            <Input
+              placeholder="Filtrar por SKU, referência ou descrição..."
+              value={searchTerm}
+              onChange={(e) => setSearchTerm(e.target.value)}
+              className="pl-8 text-xs"
+            />
+          </div>
 
+          <div className="flex items-center gap-2 w-full sm:w-auto">
             <select
               value={statusFilter}
               onChange={(e) => setStatusFilter(e.target.value)}
               className="h-9 rounded-lg border border-input bg-card px-3 text-xs text-foreground focus:outline-none focus:ring-1 focus:ring-ring"
             >
               <option value="all">Todos os Status</option>
-              <option value="Aprovado">Aprovado</option>
+              <option value="Sem alteração">Sem alteração</option>
               <option value="Pendente">Pendente</option>
+              <option value="Aprovado">Aprovado</option>
               <option value="Despachado">Despachado</option>
+              <option value="Erro">Erro</option>
+              <option value="Rejeitado">Rejeitado</option>
             </select>
           </div>
-
-          {selectedIds.length > 0 && (
-            <div className="flex items-center gap-2">
-              <span className="text-xs text-muted-foreground font-medium">
-                {selectedIds.length} selecionado(s)
-              </span>
-              <Button size="sm" onClick={handleApproveSelected} className="h-8 text-xs gap-1">
-                <CheckCircle className="size-3.5" />
-                Aprovar Selecionados
-              </Button>
-            </div>
-          )}
         </CardContent>
       </Card>
 
-      {/* Items Table with Reference Grouping */}
+      {/* Items Table */}
       <Card className="border-border/80">
         <CardContent className="p-0">
-          <Table>
-            <TableHeader>
-              <TableRow>
-                <TableHead className="w-10 text-center">
-                  <button onClick={handleSelectAll} className="cursor-pointer">
-                    {selectedIds.length === filteredItems.length && filteredItems.length > 0 ? (
-                      <CheckSquare className="size-4 text-primary" />
-                    ) : (
-                      <Square className="size-4 text-muted-foreground" />
-                    )}
-                  </button>
-                </TableHead>
-                <TableHead>SKU / Referência</TableHead>
-                <TableHead>Produto</TableHead>
-                <TableHead>Categoria</TableHead>
-                <TableHead className="text-right">Preço</TableHead>
-                <TableHead className="text-center">Estoque</TableHead>
-                <TableHead>Status Pipeline</TableHead>
-                <TableHead>Destino</TableHead>
-                <TableHead className="text-right">Ação</TableHead>
-              </TableRow>
-            </TableHeader>
-            <TableBody>
-              {filteredItems.map((item) => {
-                const isSelected = selectedIds.includes(item.id);
-
-                return (
-                  <TableRow key={item.id} className="hover:bg-muted/30">
-                    <TableCell className="text-center">
-                      <button onClick={() => handleToggleSelect(item.id)} className="cursor-pointer">
-                        {isSelected ? (
-                          <CheckSquare className="size-4 text-primary" />
-                        ) : (
-                          <Square className="size-4 text-muted-foreground" />
-                        )}
-                      </button>
-                    </TableCell>
-                    <TableCell className="font-mono text-xs font-semibold text-foreground">
-                      {item.sku}
-                    </TableCell>
-                    <TableCell className="text-xs font-medium text-foreground max-w-xs truncate">
-                      {item.title}
-                      {item.errorMessage && (
-                        <span className="block text-[11px] text-amber-400 font-normal">
-                          ⚠️ {item.errorMessage}
-                        </span>
+          {isLoading ? (
+            <div className="p-16 flex flex-col items-center justify-center gap-3 text-center">
+              <div className="relative">
+                <RefreshCw className="size-8 animate-spin text-primary" />
+                <span className="absolute inset-0 rounded-full bg-primary/20 animate-ping" />
+              </div>
+              <p className="text-sm font-semibold text-foreground mt-2">Processando e sincronizando itens do lote...</p>
+              <p className="text-xs text-muted-foreground max-w-sm">
+                Carregando registros e snapshots dos produtos deste lote.
+              </p>
+            </div>
+          ) : filteredItems.length === 0 ? (
+            <div className="p-12 flex flex-col items-center justify-center gap-3 text-muted-foreground">
+              <PackageX className="size-8 text-muted-foreground/60" />
+              <p className="text-sm font-medium text-foreground">Nenhum produto neste lote</p>
+              <p className="text-xs text-muted-foreground">
+                {searchTerm || statusFilter !== "all"
+                  ? "Tente ajustar os filtros de busca."
+                  : "Este lote não possui registros de alteração de produtos."}
+              </p>
+            </div>
+          ) : (
+            <Table>
+              <TableHeader>
+                <TableRow>
+                  <TableHead className="w-10 text-center">
+                    <button onClick={handleSelectAll} className="cursor-pointer">
+                      {selectedIds.length === filteredItems.length && filteredItems.length > 0 ? (
+                        <CheckSquare className="size-4 text-primary" />
+                      ) : (
+                        <Square className="size-4 text-muted-foreground" />
                       )}
-                    </TableCell>
-                    <TableCell className="text-xs text-muted-foreground">
-                      {item.category}
-                    </TableCell>
-                    <TableCell className="text-right text-xs font-semibold text-foreground">
-                      {formatCurrency(item.price)}
-                    </TableCell>
-                    <TableCell className="text-center text-xs font-semibold">
-                      {item.stock} un
-                    </TableCell>
-                    <TableCell>
-                      <Badge
-                        variant={
-                          item.pipelineStatus === "Aprovado"
-                            ? "success"
-                            : item.pipelineStatus === "Despachado"
-                            ? "info"
-                            : "warning"
-                        }
-                        className="text-[10px]"
-                      >
-                        {item.pipelineStatus}
-                      </Badge>
-                    </TableCell>
-                    <TableCell className="text-xs text-muted-foreground">
-                      {item.dispatchTarget}
-                    </TableCell>
-                    <TableCell className="text-right">
-                      <Button
-                        variant="ghost"
-                        size="sm"
-                        onClick={() => setInspectedItem(item)}
-                        className="h-8 text-xs"
-                      >
-                        <Eye className="size-3.5 mr-1" />
-                        Snapshot
-                      </Button>
-                    </TableCell>
-                  </TableRow>
-                );
-              })}
-            </TableBody>
-          </Table>
+                    </button>
+                  </TableHead>
+                  <TableHead>Referência / SKU</TableHead>
+                  <TableHead>Nome do produto / Descrição</TableHead>
+                  <TableHead className="text-center">Variações</TableHead>
+                  <TableHead className="text-right">Preço</TableHead>
+                  <TableHead className="text-center">Estoque</TableHead>
+                  <TableHead>Destinos</TableHead>
+                  <TableHead>Status</TableHead>
+                  <TableHead className="text-right">Ação</TableHead>
+                </TableRow>
+              </TableHeader>
+              <TableBody>
+                {filteredItems.map((item) => {
+                  const isSelected = selectedIds.includes(item.id);
+
+                  return (
+                    <TableRow key={item.id} className="hover:bg-muted/30">
+                      <TableCell className="text-center">
+                        <button onClick={() => handleToggleSelect(item.id)} className="cursor-pointer">
+                          {isSelected ? (
+                            <CheckSquare className="size-4 text-primary" />
+                          ) : (
+                            <Square className="size-4 text-muted-foreground" />
+                          )}
+                        </button>
+                      </TableCell>
+                      <TableCell className="font-mono text-xs font-semibold text-foreground">
+                        {item.reference || item.sku}
+                      </TableCell>
+                      <TableCell className="text-xs font-medium text-foreground max-w-xs truncate">
+                        {item.title}
+                      </TableCell>
+                      <TableCell className="text-center font-mono text-xs text-muted-foreground">
+                        {item.variationsCount || 1}
+                      </TableCell>
+                      <TableCell className="text-right font-mono text-xs font-semibold text-foreground">
+                        {formatCurrency(item.price)}
+                      </TableCell>
+                      <TableCell className="text-center font-mono text-xs text-foreground">
+                        {formatNumber(item.stock)} un
+                      </TableCell>
+                      <TableCell>
+                        <Badge variant="outline" className="text-[10px]">
+                          {item.dispatchTarget || "Shopify"}
+                        </Badge>
+                      </TableCell>
+                      <TableCell>
+                        <Badge
+                          variant={
+                            item.statusLabel === "Aprovado" || item.statusLabel === "Despachado"
+                              ? "success"
+                              : item.statusLabel === "Pendente" || item.requiresReview
+                              ? "warning"
+                              : item.statusLabel === "Erro" || item.statusLabel === "Rejeitado"
+                              ? "destructive"
+                              : "secondary"
+                          }
+                          className="text-[10px]"
+                        >
+                          {item.statusLabel}
+                        </Badge>
+                      </TableCell>
+                      <TableCell className="text-right">
+                        <Button
+                          variant="ghost"
+                          size="sm"
+                          onClick={() => {
+                            setInspectedItem(item);
+                            setInspectTab("diff");
+                          }}
+                          className="h-7 text-xs gap-1"
+                        >
+                          <Eye className="size-3.5" />
+                          Inspecionar
+                        </Button>
+                      </TableCell>
+                    </TableRow>
+                  );
+                })}
+              </TableBody>
+            </Table>
+          )}
         </CardContent>
+
+        {filteredItems.length > 0 && (
+          <CardFooter className="p-3 border-t border-border/80 text-xs text-muted-foreground flex justify-between">
+            <span>
+              Mostrando 1-{filteredItems.length} de {filteredItems.length} referência(s)
+            </span>
+            <span>{selectedIds.length} selecionado(s)</span>
+          </CardFooter>
+        )}
       </Card>
 
-      {/* Snapshot Inspection Modal */}
+      {/* Item Inspector / Diff Modal */}
       {inspectedItem && (
         <Dialog open={Boolean(inspectedItem)} onOpenChange={(open) => !open && setInspectedItem(null)}>
-          <DialogContent className="max-w-2xl">
+          <DialogContent className="sm:max-w-3xl max-h-[85vh] flex flex-col">
             <DialogHeader>
-              <DialogTitle className="text-base flex items-center justify-between pr-6">
-                <span>Snapshot do SKU: {inspectedItem.sku}</span>
-                <Badge variant="outline">{inspectedItem.pipelineStatus}</Badge>
-              </DialogTitle>
+              <div className="flex items-center justify-between">
+                <DialogTitle className="text-base flex items-center gap-2">
+                  <FileSpreadsheet className="size-4 text-primary" />
+                  Produto: {inspectedItem.title}
+                </DialogTitle>
+                <Badge variant="outline" className="text-xs font-mono">
+                  Ref: {inspectedItem.reference}
+                </Badge>
+              </div>
               <DialogDescription className="text-xs">
-                {inspectedItem.title}
+                Preço: <strong>{formatCurrency(inspectedItem.price)}</strong> • Estoque: <strong>{formatNumber(inspectedItem.stock)} un</strong> • Status: <strong>{inspectedItem.statusLabel}</strong>
               </DialogDescription>
             </DialogHeader>
 
-            <div className="flex flex-col gap-3 py-2 text-xs">
-              <p className="font-semibold text-foreground">Payload de Integração (JSON)</p>
-              <textarea
-                readOnly
-                value={JSON.stringify(inspectedItem.rawJson, null, 2)}
-                rows={12}
-                className="w-full rounded-lg border border-input bg-black/70 p-3 font-mono text-xs text-foreground focus:outline-none"
-              />
-            </div>
+            <Tabs value={inspectTab} onValueChange={(v) => setInspectTab(v as any)} className="w-full flex-1 overflow-hidden flex flex-col">
+              <TabsList className="grid grid-cols-3 mb-3">
+                <TabsTrigger value="diff" className="text-xs flex items-center gap-1.5">
+                  <GitCompare className="size-3.5" />
+                  Diferenças (Diff)
+                </TabsTrigger>
+                <TabsTrigger value="snapshots" className="text-xs flex items-center gap-1.5">
+                  <Layers3 className="size-3.5" />
+                  Snapshots (Antes x Depois)
+                </TabsTrigger>
+                <TabsTrigger value="raw" className="text-xs flex items-center gap-1.5">
+                  <FileCode className="size-3.5" />
+                  JSON Bruto
+                </TabsTrigger>
+              </TabsList>
 
-            <DialogFooter>
-              <Button size="sm" onClick={() => setInspectedItem(null)}>
+              {/* Tab 1: Diff */}
+              <TabsContent value="diff" className="flex-1 overflow-y-auto pr-1">
+                {inspectedItem.diff && inspectedItem.diff.length > 0 ? (
+                  <div className="flex flex-col gap-2">
+                    <Table>
+                      <TableHeader>
+                        <TableRow>
+                          <TableHead>Campo Modificado</TableHead>
+                          <TableHead>Valor Anterior (Salvo)</TableHead>
+                          <TableHead>Novo Valor (Importado)</TableHead>
+                        </TableRow>
+                      </TableHeader>
+                      <TableBody>
+                        {inspectedItem.diff.map((d, i) => (
+                          <TableRow key={i}>
+                            <TableCell className="font-semibold text-xs text-foreground">{d.field}</TableCell>
+                            <TableCell className="text-xs text-rose-400 bg-rose-500/5 font-mono">{d.oldValue || "-"}</TableCell>
+                            <TableCell className="text-xs text-emerald-400 bg-emerald-500/5 font-mono">{d.newValue || "-"}</TableCell>
+                          </TableRow>
+                        ))}
+                      </TableBody>
+                    </Table>
+                  </div>
+                ) : (
+                  <div className="p-8 text-center text-muted-foreground flex flex-col items-center justify-center gap-2">
+                    <CheckCircle className="size-7 text-emerald-400" />
+                    <p className="text-xs font-semibold text-foreground">Nenhuma divergência detectada</p>
+                    <p className="text-[11px]">Os dados deste produto no arquivo importado são idênticos aos cadastrados no catálogo do Hub.</p>
+                  </div>
+                )}
+              </TabsContent>
+
+              {/* Tab 2: Snapshots */}
+              <TabsContent value="snapshots" className="flex-1 overflow-y-auto grid grid-cols-2 gap-3 pr-1">
+                <div className="flex flex-col gap-1.5">
+                  <span className="text-xs font-semibold text-muted-foreground">Snapshot Anterior (Salvo no Hub)</span>
+                  <pre className="p-3 rounded-lg bg-black/60 border border-border/60 text-[11px] font-mono text-muted-foreground overflow-x-auto h-64">
+                    {JSON.stringify(inspectedItem.savedSnapshot || {}, null, 2)}
+                  </pre>
+                </div>
+                <div className="flex flex-col gap-1.5">
+                  <span className="text-xs font-semibold text-emerald-400">Snapshot Recebido (Novo Arquivo)</span>
+                  <pre className="p-3 rounded-lg bg-black/60 border border-emerald-500/30 text-[11px] font-mono text-emerald-300 overflow-x-auto h-64">
+                    {JSON.stringify(inspectedItem.incomingSnapshot || inspectedItem.rawJson || {}, null, 2)}
+                  </pre>
+                </div>
+              </TabsContent>
+
+              {/* Tab 3: Raw JSON */}
+              <TabsContent value="raw" className="flex-1 overflow-y-auto pr-1">
+                <pre className="p-3 rounded-lg bg-black/70 border border-border/60 text-xs font-mono text-foreground overflow-x-auto h-72">
+                  {JSON.stringify(inspectedItem, null, 2)}
+                </pre>
+              </TabsContent>
+            </Tabs>
+
+            <DialogFooter className="mt-4">
+              <Button variant="outline" size="sm" onClick={() => setInspectedItem(null)}>
                 Fechar
               </Button>
             </DialogFooter>

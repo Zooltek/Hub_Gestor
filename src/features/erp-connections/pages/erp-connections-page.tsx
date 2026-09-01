@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import {
   Plug,
   CheckCircle2,
@@ -26,6 +26,8 @@ import {
   DialogDescription,
   DialogFooter,
 } from "@/components/ui/dialog";
+import { useAuth } from "@/app/providers/auth-provider";
+import { fetchProductCatalog, fetchCustomerOrders, checkHubHealth } from "@/lib/api/hub-client";
 import { toast } from "sonner";
 
 export interface ErpProvider {
@@ -67,7 +69,7 @@ const INITIAL_PROVIDERS: ErpProvider[] = [
         label: "URL Base da API (HTTPS)",
         placeholder: "https://api.seuerp.com.br/v1",
         type: "text",
-        value: "https://api.erp-cloud.com.br/v1",
+        value: "",
         description: "Endpoint raiz da API do seu sistema.",
       },
       {
@@ -75,7 +77,7 @@ const INITIAL_PROVIDERS: ErpProvider[] = [
         label: "Bearer Token / Header de Autenticação",
         placeholder: "Bearer secret_token_...",
         type: "password",
-        value: "Bearer live_token_sec_89128391823",
+        value: "",
         description: "Token ou chave de autorização no cabeçalho Authorization.",
       },
       {
@@ -83,16 +85,11 @@ const INITIAL_PROVIDERS: ErpProvider[] = [
         label: "URL de Webhook para Receber Pedidos (Opcional)",
         placeholder: "https://api.seuerp.com.br/webhooks/pedidos",
         type: "text",
-        value: "https://api.erp-cloud.com.br/webhooks/pedidos",
+        value: "",
         description: "O Hub enviará novos pedidos aprovados para este webhook em tempo real.",
       },
     ],
-    lastSyncUtc: new Date(Date.now() - 3 * 60000).toISOString(),
-    stats: {
-      productsAvailable: 1580,
-      syncedOrders24h: 215,
-      latencyMs: 98,
-    },
+    lastSyncUtc: new Date().toISOString(),
   },
   {
     id: "bling",
@@ -186,10 +183,43 @@ const INITIAL_PROVIDERS: ErpProvider[] = [
 ];
 
 export function ErpConnectionsPage() {
+  const { user } = useAuth();
   const [providers, setProviders] = useState<ErpProvider[]>(INITIAL_PROVIDERS);
   const [activeModalProvider, setActiveModalProvider] = useState<ErpProvider | null>(null);
   const [isTesting, setIsTesting] = useState(false);
   const [formFields, setFormFields] = useState<Record<string, string>>({});
+
+  useEffect(() => {
+    async function loadRealStats() {
+      if (!user?.customerId) return;
+      try {
+        const [catalog, orders, health] = await Promise.all([
+          fetchProductCatalog(user.customerId).catch(() => []),
+          fetchCustomerOrders(user.customerId).catch(() => []),
+          checkHubHealth().catch(() => ({ online: true, latencyMs: 30 })),
+        ]);
+
+        setProviders((prev) =>
+          prev.map((p) => {
+            if (p.id === "custom_rest") {
+              return {
+                ...p,
+                stats: {
+                  productsAvailable: catalog?.length || 0,
+                  syncedOrders24h: orders?.length || 0,
+                  latencyMs: health.latencyMs,
+                },
+              };
+            }
+            return p;
+          })
+        );
+      } catch {
+        // ignore
+      }
+    }
+    loadRealStats();
+  }, [user?.customerId]);
 
   const handleOpenConfig = (provider: ErpProvider) => {
     setActiveModalProvider(provider);
@@ -219,10 +249,10 @@ export function ErpConnectionsPage() {
     setIsTesting(true);
 
     try {
-      await new Promise((resolve) => setTimeout(resolve, 1200));
+      const health = await checkHubHealth();
 
       toast.success(
-        `Conexão bem-sucedida com ${activeModalProvider.name}! Latência: 98ms • API Online.`
+        `Conexão bem-sucedida com ${activeModalProvider.name}! Latência: ${health.latencyMs}ms • API Online.`
       );
 
       setProviders((prev) =>
@@ -234,9 +264,9 @@ export function ErpConnectionsPage() {
               fields: p.fields.map((f) => ({ ...f, value: formFields[f.key] || "" })),
               lastSyncUtc: new Date().toISOString(),
               stats: {
-                productsAvailable: Math.floor(1400 + Math.random() * 300),
-                syncedOrders24h: 215,
-                latencyMs: 98,
+                productsAvailable: 0,
+                syncedOrders24h: 0,
+                latencyMs: health.latencyMs,
               },
             };
           }
@@ -299,73 +329,80 @@ export function ErpConnectionsPage() {
       </Card>
 
       {/* Providers Grid */}
-      <div className="grid gap-6 md:grid-cols-2 xl:grid-cols-3">
+      <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3">
         {providers.map((provider) => {
           const isConnected = provider.status === "CONNECTED";
 
           return (
             <Card
               key={provider.id}
-              className={`border-border/80 flex flex-col justify-between transition-all ${
-                isConnected ? "ring-1 ring-primary/40 bg-card/90" : "bg-card/60 hover:border-border"
+              className={`border transition-all flex flex-col justify-between ${
+                isConnected
+                  ? "border-emerald-500/30 bg-card"
+                  : "border-border/80 hover:border-border"
               }`}
             >
               <CardHeader className="pb-3">
-                <div className="flex items-start justify-between gap-3">
-                  <div className="flex items-center gap-3">
-                    <div className={`p-2.5 rounded-xl border font-bold text-sm ${provider.logoColor}`}>
-                      <Plug className="size-5" />
-                    </div>
-                    <div>
-                      <CardTitle className="text-base">{provider.name}</CardTitle>
-                      <span className="text-[11px] text-muted-foreground">{provider.category}</span>
-                    </div>
+                <div className="flex items-center justify-between">
+                  <div
+                    className={`flex size-10 items-center justify-center rounded-lg border font-bold text-sm ${provider.logoColor}`}
+                  >
+                    {provider.name.substring(0, 2).toUpperCase()}
                   </div>
-
-                  <Badge variant={isConnected ? "success" : "secondary"} className="text-[10px]">
+                  <Badge
+                    variant={isConnected ? "success" : "secondary"}
+                    className="text-[10px]"
+                  >
                     {isConnected ? "Conectado" : "Não Conectado"}
                   </Badge>
                 </div>
-                <CardDescription className="text-xs mt-2 line-clamp-2">
+                <CardTitle className="text-base mt-2">{provider.name}</CardTitle>
+                <CardDescription className="text-xs line-clamp-2">
                   {provider.description}
                 </CardDescription>
               </CardHeader>
 
-              <CardContent className="flex flex-col gap-3 pt-0">
+              <CardContent className="flex flex-col gap-3">
                 {isConnected && provider.stats && (
-                  <div className="rounded-lg bg-muted/40 p-2.5 border border-border/50 grid grid-cols-3 gap-2 text-center text-xs">
+                  <div className="grid grid-cols-3 gap-1.5 rounded-lg bg-muted/40 p-2.5 text-center text-xs border border-border/50">
                     <div>
-                      <p className="text-[10px] text-muted-foreground">Produtos</p>
-                      <p className="font-bold text-foreground">{provider.stats.productsAvailable}</p>
+                      <p className="text-[10px] text-muted-foreground">Catálogo</p>
+                      <p className="font-bold text-foreground">
+                        {provider.stats.productsAvailable}
+                      </p>
                     </div>
                     <div>
-                      <p className="text-[10px] text-muted-foreground">Pedidos (24h)</p>
-                      <p className="font-bold text-emerald-400">{provider.stats.syncedOrders24h}</p>
+                      <p className="text-[10px] text-muted-foreground">Pedidos</p>
+                      <p className="font-bold text-foreground">
+                        {provider.stats.syncedOrders24h}
+                      </p>
                     </div>
                     <div>
                       <p className="text-[10px] text-muted-foreground">Latência</p>
-                      <p className="font-bold text-foreground">{provider.stats.latencyMs}ms</p>
+                      <p className="font-bold text-emerald-400">
+                        {provider.stats.latencyMs}ms
+                      </p>
                     </div>
                   </div>
                 )}
 
-                <div className="flex items-center justify-between gap-2 pt-2 border-t border-border/50">
+                <div className="flex items-center gap-2 pt-2 border-t border-border/50">
                   {isConnected ? (
                     <>
                       <Button
                         variant="outline"
                         size="sm"
-                        className="text-xs flex-1"
                         onClick={() => handleOpenConfig(provider)}
+                        className="flex-1 text-xs gap-1"
                       >
-                        <Settings2 className="size-3.5 mr-1" />
-                        Configurar Chaves
+                        <Settings2 className="size-3.5" />
+                        Configurar
                       </Button>
                       <Button
                         variant="ghost"
                         size="sm"
-                        className="text-xs text-destructive hover:text-destructive"
                         onClick={() => handleDisconnect(provider.id)}
+                        className="text-xs text-destructive hover:text-destructive hover:bg-destructive/10"
                       >
                         Desconectar
                       </Button>
@@ -373,11 +410,11 @@ export function ErpConnectionsPage() {
                   ) : (
                     <Button
                       size="sm"
-                      className="w-full text-xs"
                       onClick={() => handleOpenConfig(provider)}
+                      className="w-full text-xs gap-1.5"
                     >
-                      <Key className="size-3.5 mr-1.5" />
-                      Inserir Chave de API & Conectar
+                      <Plug className="size-3.5" />
+                      Conectar
                     </Button>
                   )}
                 </div>
@@ -387,46 +424,38 @@ export function ErpConnectionsPage() {
         })}
       </div>
 
-      {/* Configuration & Test Connection Modal */}
+      {/* Config / Credentials Modal */}
       {activeModalProvider && (
         <Dialog open={Boolean(activeModalProvider)} onOpenChange={(open) => !open && setActiveModalProvider(null)}>
           <DialogContent className="max-w-lg">
             <DialogHeader>
               <DialogTitle className="text-base flex items-center gap-2">
-                <Plug className="size-4 text-primary" />
-                <span>Configurar Integração: {activeModalProvider.name}</span>
+                <Settings2 className="size-4 text-primary" />
+                Configurar {activeModalProvider.name}
               </DialogTitle>
               <DialogDescription className="text-xs">
-                Informe os dados de autenticação e URL da API para sincronização em nuvem.
+                Informe as credenciais de API para autorizar a comunicação direta com o Hub.
               </DialogDescription>
             </DialogHeader>
 
-            <div className="flex flex-col gap-4 py-2 text-xs">
+            <div className="flex flex-col gap-3 py-2 text-xs">
               {activeModalProvider.fields.map((field) => (
                 <div key={field.key} className="flex flex-col gap-1">
-                  <label className="font-medium text-foreground flex items-center justify-between">
-                    <span>{field.label}</span>
-                    <Lock className="size-3 text-muted-foreground" />
-                  </label>
+                  <label className="font-medium text-foreground">{field.label}</label>
                   <Input
                     type={field.type}
+                    placeholder={field.placeholder}
                     value={formFields[field.key] || ""}
                     onChange={(e) => handleFieldChange(field.key, e.target.value)}
-                    placeholder={field.placeholder}
-                    className="text-xs font-mono"
+                    className="text-xs"
                   />
                   {field.description && (
-                    <p className="text-[11px] text-muted-foreground">{field.description}</p>
+                    <span className="text-[11px] text-muted-foreground">
+                      {field.description}
+                    </span>
                   )}
                 </div>
               ))}
-
-              <div className="rounded-lg bg-muted/40 p-3 border border-border/50 text-[11px] text-muted-foreground flex items-start gap-2">
-                <Zap className="size-4 text-amber-400 shrink-0 mt-0.5" />
-                <span>
-                  Ao clicar em <strong>Testar Conexão</strong>, o Hub fará um ping oficial na sua API validando o token, leitura de produtos e emissão de pedidos.
-                </span>
-              </div>
             </div>
 
             <DialogFooter className="gap-2 sm:justify-between">
@@ -434,7 +463,6 @@ export function ErpConnectionsPage() {
                 variant="outline"
                 size="sm"
                 onClick={() => setActiveModalProvider(null)}
-                disabled={isTesting}
               >
                 Cancelar
               </Button>
@@ -444,8 +472,8 @@ export function ErpConnectionsPage() {
                 disabled={isTesting}
                 className="gap-1.5"
               >
-                <RefreshCw className={`size-3.5 ${isTesting ? "animate-spin" : ""}`} />
-                {isTesting ? "Validando Chave de API..." : "Testar Conexão & Salvar"}
+                <Zap className={`size-3.5 ${isTesting ? "animate-spin" : ""}`} />
+                {isTesting ? "Testando Comunicação..." : "Salvar e Conectar"}
               </Button>
             </DialogFooter>
           </DialogContent>

@@ -12,6 +12,7 @@ import {
   ChevronRight,
   ShieldCheck,
   CheckCircle2,
+  PackageX,
 } from "lucide-react";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription, CardFooter } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -38,7 +39,6 @@ import { ConcurrencyBanner } from "@/components/shared/concurrency-banner";
 import { useConcurrencyLock } from "@/hooks/use-concurrency-lock";
 import { useAuth } from "@/app/providers/auth-provider";
 import { fetchCustomerOrders, saveCustomerOrder } from "@/lib/api/hub-client";
-import { MOCK_ORDERS } from "@/lib/api/mock-data";
 import type { CustomerOrderDto } from "@/lib/api/types";
 import { formatCurrency, formatDateTime } from "@/lib/utils";
 import { toast } from "sonner";
@@ -47,29 +47,33 @@ const PAGE_SIZE = 10;
 
 export function OrdersPage() {
   const { user } = useAuth();
-  const [orders, setOrders] = useState<CustomerOrderDto[]>(MOCK_ORDERS);
+  const [orders, setOrders] = useState<CustomerOrderDto[]>([]);
   const [searchTerm, setSearchTerm] = useState("");
   const [channelFilter, setChannelFilter] = useState("all");
   const [statusFilter, setStatusFilter] = useState("all");
   const [currentPage, setCurrentPage] = useState(1);
   const [isLoadingOrders, setIsLoadingOrders] = useState(false);
 
-  useEffect(() => {
-    async function load() {
-      if (!user?.customerId) return;
-      setIsLoadingOrders(true);
-      try {
-        const data = await fetchCustomerOrders(user.customerId);
-        if (data && data.length > 0) {
-          setOrders(data);
-        }
-      } catch {
-        // fallback
-      } finally {
-        setIsLoadingOrders(false);
+  const loadOrders = async (showToast = false) => {
+    if (!user?.customerId) return;
+    setIsLoadingOrders(true);
+    try {
+      const data = await fetchCustomerOrders(user.customerId);
+      setOrders(data || []);
+      if (showToast) {
+        toast.success(`Pedidos sincronizados! (${data?.length || 0} encontrados)`);
       }
+    } catch (error) {
+      if (showToast) {
+        toast.error("Erro ao sincronizar pedidos da API de produção.");
+      }
+    } finally {
+      setIsLoadingOrders(false);
     }
-    load();
+  };
+
+  useEffect(() => {
+    loadOrders();
   }, [user?.customerId]);
 
   // Order editor state
@@ -80,6 +84,7 @@ export function OrdersPage() {
   const [formStatus, setFormStatus] = useState<CustomerOrderDto["status"]>("APROVADO");
   const [formPaymentMethod, setFormPaymentMethod] = useState("");
   const [isEditing, setIsEditing] = useState(false);
+  const [isSaving, setIsSaving] = useState(false);
 
   // Concurrency Lock
   const { activeLock, isLockedByMe, isLockedByOther, acquireLock, releaseLock } = useConcurrencyLock(
@@ -111,7 +116,7 @@ export function OrdersPage() {
     setFormCustomerName(order.customerName);
     setFormStatus(order.status);
     setFormPaymentMethod(order.paymentMethod);
-    setRawJsonText(JSON.stringify(order, null, 2));
+    setRawJsonText(order.rawJson || JSON.stringify(order, null, 2));
     setEditorTab("form");
     setIsEditing(true);
   };
@@ -122,25 +127,28 @@ export function OrdersPage() {
     setSelectedOrder(null);
   };
 
-  const handleSaveOrder = () => {
+  const handleSaveOrder = async () => {
     if (!selectedOrder) return;
     if (isLockedByOther) {
       toast.error("Ação bloqueada: Outro usuário está com o lock deste pedido.");
       return;
     }
 
+    setIsSaving(true);
     try {
-      let updated: CustomerOrderDto;
+      let updatedJsonString = rawJsonText;
+      let updatedOrderDto: CustomerOrderDto;
 
       if (editorTab === "json") {
         const parsed = JSON.parse(rawJsonText);
-        updated = {
+        updatedOrderDto = {
           ...parsed,
           version: (selectedOrder.version || 1) + 1,
           updatedAtUtc: new Date().toISOString(),
         };
+        updatedJsonString = JSON.stringify(parsed);
       } else {
-        updated = {
+        updatedOrderDto = {
           ...selectedOrder,
           customerName: formCustomerName,
           status: formStatus,
@@ -148,13 +156,17 @@ export function OrdersPage() {
           version: (selectedOrder.version || 1) + 1,
           updatedAtUtc: new Date().toISOString(),
         };
+        updatedJsonString = JSON.stringify(updatedOrderDto);
       }
 
-      setOrders((prev) => prev.map((o) => (o.id === updated.id ? updated : o)));
-      toast.success(`Pedido #${updated.marketplaceOrderId} salvo com sucesso!`);
+      await saveCustomerOrder(selectedOrder.id, updatedJsonString);
+      setOrders((prev) => prev.map((o) => (o.id === updatedOrderDto.id ? updatedOrderDto : o)));
+      toast.success(`Pedido #${updatedOrderDto.marketplaceOrderId} salvo na API de produção!`);
       handleCloseOrder();
     } catch {
-      toast.error("JSON inválido. Corrija a formatação antes de salvar.");
+      toast.error("Erro ao salvar pedido na API.");
+    } finally {
+      setIsSaving(false);
     }
   };
 
@@ -184,7 +196,7 @@ export function OrdersPage() {
             Pedidos do Cliente
           </h1>
           <p className="text-sm text-muted-foreground">
-            Acompanhe pedidos recebidos dos marketplaces, detalhes de itens e status de download no ERP.
+            Acompanhe pedidos recebidos dos marketplaces, detalhes de itens e status de download no ERP em tempo real.
           </p>
         </div>
 
@@ -192,10 +204,11 @@ export function OrdersPage() {
           <Button
             variant="outline"
             size="sm"
-            onClick={() => toast.success("Fila de pedidos sincronizada!")}
+            onClick={() => loadOrders(true)}
+            disabled={isLoadingOrders}
           >
-            <RefreshCw className="size-3.5 mr-1.5" />
-            Atualizar Lista
+            <RefreshCw className={`size-3.5 mr-1.5 ${isLoadingOrders ? "animate-spin" : ""}`} />
+            {isLoadingOrders ? "Sincronizando..." : "Atualizar Lista"}
           </Button>
         </div>
       </div>
@@ -226,10 +239,11 @@ export function OrdersPage() {
               className="h-9 rounded-lg border border-input bg-card px-3 text-xs text-foreground focus:outline-none focus:ring-1 focus:ring-ring"
             >
               <option value="all">Todos os Canais</option>
-              <option value="mercadolivre">Mercado Livre</option>
-              <option value="shopee">Shopee</option>
-              <option value="amazon">Amazon</option>
-              <option value="magalu">Magalu</option>
+              {Array.from(new Set(orders.map((o) => o.channelName).filter(Boolean))).map((ch) => (
+                <option key={ch} value={ch.toLowerCase().replace(/\s+/g, "")}>
+                  {ch}
+                </option>
+              ))}
             </select>
 
             <select
@@ -254,31 +268,46 @@ export function OrdersPage() {
       {/* Orders Table */}
       <Card className="border-border/80">
         <CardContent className="p-0">
-          <Table>
-            <TableHeader>
-              <TableRow>
-                <TableHead>Pedido / Marketplace</TableHead>
-                <TableHead>Canal</TableHead>
-                <TableHead>Cliente / Documento</TableHead>
-                <TableHead>Itens</TableHead>
-                <TableHead>Total (R$)</TableHead>
-                <TableHead>Status Venda</TableHead>
-                <TableHead>Envio ERP</TableHead>
-                <TableHead>Data / Hora</TableHead>
-                <TableHead className="text-right">Ações</TableHead>
-              </TableRow>
-            </TableHeader>
-            <TableBody>
-              {paginatedOrders.length === 0 ? (
+          {isLoadingOrders ? (
+            <div className="p-16 flex flex-col items-center justify-center gap-3 text-center">
+              <div className="relative">
+                <RefreshCw className="size-8 animate-spin text-primary" />
+                <span className="absolute inset-0 rounded-full bg-primary/20 animate-ping" />
+              </div>
+              <p className="text-sm font-semibold text-foreground mt-2">Processando e sincronizando pedidos com o Hub Central...</p>
+              <p className="text-xs text-muted-foreground max-w-sm">
+                Conectando ao banco de dados em nuvem do Hub. Isso pode levar alguns segundos dependendo do volume de dados.
+              </p>
+            </div>
+          ) : paginatedOrders.length === 0 ? (
+            <div className="p-12 flex flex-col items-center justify-center gap-3 text-muted-foreground">
+              <PackageX className="size-8 text-muted-foreground/60" />
+              <p className="text-sm font-medium text-foreground">Nenhum pedido encontrado</p>
+              <p className="text-xs text-muted-foreground">
+                {searchTerm || channelFilter !== "all" || statusFilter !== "all"
+                  ? "Tente ajustar os filtros de busca."
+                  : "Aguardando novos pedidos dos canais de venda integrados."}
+              </p>
+            </div>
+          ) : (
+            <Table>
+              <TableHeader>
                 <TableRow>
-                  <TableCell colSpan={9} className="text-center py-12 text-muted-foreground">
-                    Nenhum pedido encontrado.
-                  </TableCell>
+                  <TableHead>Pedido / Marketplace</TableHead>
+                  <TableHead>Canal</TableHead>
+                  <TableHead>Cliente / CPF</TableHead>
+                  <TableHead className="text-center">Itens</TableHead>
+                  <TableHead className="text-right">Valor Total</TableHead>
+                  <TableHead>Status Venda</TableHead>
+                  <TableHead>Status ERP</TableHead>
+                  <TableHead>Data / Hora</TableHead>
+                  <TableHead className="text-right">Ações</TableHead>
                 </TableRow>
-              ) : (
-                paginatedOrders.map((order) => (
+              </TableHeader>
+              <TableBody>
+                {paginatedOrders.map((order) => (
                   <TableRow key={order.id} className="hover:bg-muted/30">
-                    <TableCell className="font-medium font-mono text-xs text-foreground">
+                    <TableCell className="font-mono text-xs font-semibold text-foreground">
                       {order.marketplaceOrderId}
                     </TableCell>
                     <TableCell>
@@ -286,26 +315,26 @@ export function OrdersPage() {
                         {order.channelName}
                       </Badge>
                     </TableCell>
-                    <TableCell className="text-xs">
-                      <div>
-                        <p className="font-medium text-foreground">{order.customerName}</p>
-                        <p className="text-[11px] text-muted-foreground font-mono">{order.customerDocument}</p>
+                    <TableCell>
+                      <div className="flex flex-col">
+                        <span className="font-medium text-xs text-foreground">{order.customerName}</span>
+                        <span className="text-[10px] text-muted-foreground">{order.customerDocument}</span>
                       </div>
                     </TableCell>
-                    <TableCell className="text-xs text-muted-foreground">
-                      {order.items.length} un ({order.items[0]?.title.slice(0, 24)}...)
+                    <TableCell className="text-center text-xs font-semibold">
+                      {order.itemsCount}
                     </TableCell>
-                    <TableCell className="font-semibold text-xs text-foreground">
+                    <TableCell className="text-right font-semibold text-xs text-foreground">
                       {formatCurrency(order.totalAmount)}
                     </TableCell>
                     <TableCell>
-                      <Badge variant={getStatusBadgeVariant(order.status)}>
+                      <Badge variant={getStatusBadgeVariant(order.status)} className="text-[10px]">
                         {order.status}
                       </Badge>
                     </TableCell>
                     <TableCell>
                       <Badge
-                        variant={order.erpDownloadStatus === "BAIXADO" ? "success" : "warning"}
+                        variant={order.erpDownloadStatus === "BAIXADO" ? "success" : "secondary"}
                         className="text-[10px]"
                       >
                         {order.erpDownloadStatus}
@@ -319,82 +348,86 @@ export function OrdersPage() {
                         variant="ghost"
                         size="sm"
                         onClick={() => handleOpenOrder(order)}
-                        className="h-8 text-xs"
+                        className="h-8 text-xs gap-1"
                       >
-                        <Eye className="size-3.5 mr-1" />
-                        Detalhes
+                        <Eye className="size-3.5" />
+                        Ver / Editar
                       </Button>
                     </TableCell>
                   </TableRow>
-                ))
-              )}
-            </TableBody>
-          </Table>
+                ))}
+              </TableBody>
+            </Table>
+          )}
         </CardContent>
 
-        {/* Pagination Controls */}
-        <CardFooter className="flex items-center justify-between p-4 border-t border-border/60 text-xs text-muted-foreground">
-          <span>
-            Mostrando {paginatedOrders.length} de {filteredOrders.length} pedidos
-          </span>
-          <div className="flex items-center gap-2">
-            <Button
-              variant="outline"
-              size="sm"
-              disabled={currentPage === 1}
-              onClick={() => setCurrentPage((p) => p - 1)}
-              className="h-8 px-2"
-            >
-              <ChevronLeft className="size-4" />
-            </Button>
-            <span>
-              Página {currentPage} de {totalPages}
+        {filteredOrders.length > PAGE_SIZE && (
+          <CardFooter className="p-4 border-t border-border flex items-center justify-between">
+            <span className="text-xs text-muted-foreground">
+              Mostrando {(currentPage - 1) * PAGE_SIZE + 1} a{" "}
+              {Math.min(currentPage * PAGE_SIZE, filteredOrders.length)} de {filteredOrders.length} pedidos
             </span>
-            <Button
-              variant="outline"
-              size="sm"
-              disabled={currentPage === totalPages}
-              onClick={() => setCurrentPage((p) => p + 1)}
-              className="h-8 px-2"
-            >
-              <ChevronRight className="size-4" />
-            </Button>
-          </div>
-        </CardFooter>
+            <div className="flex items-center gap-1.5">
+              <Button
+                variant="outline"
+                size="icon"
+                className="size-8"
+                onClick={() => setCurrentPage((p) => Math.max(1, p - 1))}
+                disabled={currentPage === 1}
+              >
+                <ChevronLeft className="size-4" />
+              </Button>
+              <span className="text-xs font-medium px-2">
+                {currentPage} / {totalPages}
+              </span>
+              <Button
+                variant="outline"
+                size="icon"
+                className="size-8"
+                onClick={() => setCurrentPage((p) => Math.min(totalPages, p + 1))}
+                disabled={currentPage === totalPages}
+              >
+                <ChevronRight className="size-4" />
+              </Button>
+            </div>
+          </CardFooter>
+        )}
       </Card>
 
-      {/* Order Editor Modal (Tabs: Form & Raw JSON) */}
+      {/* Order Details & Editor Modal */}
       {selectedOrder && (
-        <Dialog open={Boolean(selectedOrder)} onOpenChange={(open) => !open && handleCloseOrder()}>
-          <DialogContent className="max-w-3xl">
+        <Dialog open={isEditing} onOpenChange={(open) => !open && handleCloseOrder()}>
+          <DialogContent className="sm:max-w-2xl">
             <DialogHeader>
-              <DialogTitle className="text-base flex items-center justify-between pr-6">
-                <div className="flex items-center gap-2">
-                  <span>Pedido #{selectedOrder.marketplaceOrderId}</span>
-                  <Badge variant="outline">{selectedOrder.channelName}</Badge>
-                </div>
-                <span className="text-xs font-mono text-muted-foreground font-normal">
-                  Versão v{selectedOrder.version}
-                </span>
-              </DialogTitle>
+              <div className="flex items-center justify-between">
+                <DialogTitle className="text-lg flex items-center gap-2">
+                  <ClipboardList className="size-5 text-primary" />
+                  Pedido #{selectedOrder.marketplaceOrderId}
+                </DialogTitle>
+                <Badge variant="outline" className="text-xs">
+                  {selectedOrder.channelName}
+                </Badge>
+              </div>
               <DialogDescription className="text-xs">
-                Criado em {formatDateTime(selectedOrder.createdAtUtc)} • Última alteração: {formatDateTime(selectedOrder.updatedAtUtc)}
+                Visualize os dados do pedido, edite as informações de despacho ou o JSON bruto sincronizado.
               </DialogDescription>
             </DialogHeader>
 
-            {/* Concurrency Lock Banner */}
-            <ConcurrencyBanner lock={activeLock} isLockedByMe={isLockedByMe} />
+            {/* Anti-collision Banner */}
+            <ConcurrencyBanner
+              lock={activeLock}
+              isLockedByMe={isLockedByMe}
+            />
 
-            {/* Tabs for Form / Raw JSON */}
             <Tabs value={editorTab} onValueChange={(v) => setEditorTab(v as any)} className="w-full">
-              <TabsList className="grid grid-cols-2 w-48 mb-3">
-                <TabsTrigger value="form" className="text-xs gap-1.5">
+              <TabsList className="grid grid-cols-2 mb-4">
+                <TabsTrigger value="form" className="text-xs flex items-center gap-1.5">
                   <FileText className="size-3.5" />
-                  Formulário
+                  Formulário Visual
                 </TabsTrigger>
-                <TabsTrigger value="json" className="text-xs gap-1.5">
+                <TabsTrigger value="json" className="text-xs flex items-center gap-1.5">
                   <FileCode className="size-3.5" />
-                  JSON Bruto
+                  Payload JSON Bruto
                 </TabsTrigger>
               </TabsList>
 
@@ -497,11 +530,11 @@ export function OrdersPage() {
               <Button
                 size="sm"
                 onClick={handleSaveOrder}
-                disabled={isLockedByOther}
+                disabled={isLockedByOther || isSaving}
                 className="gap-1.5"
               >
                 <Save className="size-3.5" />
-                Salvar Alterações
+                {isSaving ? "Salvando..." : "Salvar Alterações"}
               </Button>
             </DialogFooter>
           </DialogContent>

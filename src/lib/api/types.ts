@@ -42,12 +42,16 @@ export interface ChannelPerformance {
 export interface TopProduct {
   id: string;
   sku: string;
+  reference?: string;
   title: string;
   category: string;
   unitsSold: number;
   revenue: number;
   stock: number;
   price: number;
+  topVariation?: string;
+  topVariationUnits?: number;
+  topVariationSku?: string;
   imageUrl?: string;
   trendPercent: number;
 }
@@ -74,9 +78,18 @@ export interface IntegrationHealthStatus {
     pendingErpDownload: number;
     failedIntegration: number;
   };
-  alerts: Array<{
+  alerts?: Array<{
     id: string;
     severity: "critical" | "warning" | "info";
+    title: string;
+    description: string;
+    timestampUtc: string;
+    actionUrl?: string;
+    actionLabel?: string;
+  }>;
+  actionItems?: Array<{
+    id: string;
+    type: "warning" | "error" | "info";
     title: string;
     description: string;
     timestampUtc: string;
@@ -88,7 +101,11 @@ export interface IntegrationHealthStatus {
 export interface OrderItemDto {
   id: string;
   sku: string;
+  reference?: string;
   title: string;
+  variation?: string;
+  color?: string;
+  size?: string;
   quantity: number;
   unitPrice: number;
   totalPrice: number;
@@ -118,6 +135,7 @@ export interface CustomerOrderDto {
   };
   paymentMethod: string;
   version: number;
+  rawJson?: string;
 }
 
 export interface ProductBatchDto {
@@ -134,16 +152,73 @@ export interface ProductBatchDto {
   channelName: string;
   errorLog?: string[];
   version: number;
+  received?: number;
+  changed?: number;
+  dispatched?: number;
+  dispatchFailed?: number;
+}
+
+export interface ProductFieldDiffDto {
+  field: string;
+  oldValue: string;
+  newValue: string;
+  category?: string;
+}
+
+export interface ProductChangeDto {
+  id: string;
+  customerId: string;
+  sku: string;
+  reference: string;
+  status: number;
+  statusLabel: string;
+  title: string;
+  category: string;
+  price: number;
+  stock: number;
+  dispatchTarget: string;
+  requiresReview: boolean;
+  errorMessage?: string;
+  rawJson?: any;
+  diff?: ProductFieldDiffDto[];
+  savedSnapshot?: any;
+  incomingSnapshot?: any;
+  variationsCount?: number;
+  createdAtUtc: string;
+}
+
+export interface CatalogItemVariationDto {
+  sku: string;
+  variationName: string;
+  color?: string;
+  colorCode?: string;
+  size?: string;
+  barcode: string;
+  stock: number;
+  price?: number;
+  costPrice?: number;
+  images?: string[];
+  rawAttributes?: Array<{ key: string; value: string }>;
 }
 
 export interface CatalogItemDto {
   id: string;
   sku: string;
+  reference?: string;
   title: string;
+  description?: string;
   category: string;
+  brand?: string;
+  manufacturerCode?: string;
+  costPrice?: number;
   price: number;
   promotionalPrice?: number;
   stock: number;
+  isActive?: boolean;
+  dispatchTargets?: string[];
+  images?: string[];
+  variations?: CatalogItemVariationDto[];
+  lastImportedAtUtc?: string;
   channels: Array<{
     channel: string;
     status: "ATIVO" | "PAUSADO" | "ERRO";
@@ -151,4 +226,5 @@ export interface CatalogItemDto {
     lastSyncUtc: string;
   }>;
   version: number;
+  rawSnapshot?: any;
 }

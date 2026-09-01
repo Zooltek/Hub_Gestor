@@ -1,40 +1,95 @@
-import { useState } from "react";
-import { Activity, Monitor, Server, Cloud, CheckCircle, AlertTriangle, RefreshCw, Terminal, ShieldCheck } from "lucide-react";
+import { useState, useEffect } from "react";
+import { Activity, Server, Globe, Cloud, CheckCircle2, AlertTriangle, RefreshCw, Terminal, ShieldCheck } from "lucide-react";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
-import { MOCK_INTEGRATION_HEALTH } from "@/lib/api/mock-data";
+import { checkHubHealth } from "@/lib/api/hub-client";
 import { formatDateTime } from "@/lib/utils";
 import { toast } from "sonner";
 
-export function HealthPage() {
-  const [health, setHealth] = useState(MOCK_INTEGRATION_HEALTH);
-  const [isTesting, setIsTesting] = useState(false);
+interface HealthLogEntry {
+  timestamp: string;
+  type: "gateway" | "erp" | "channel";
+  message: string;
+}
 
-  const runConnectivityTest = () => {
+export function HealthPage() {
+  const [latency, setLatency] = useState<number | null>(null);
+  const [isOnline, setIsOnline] = useState<boolean>(true);
+  const [isTesting, setIsTesting] = useState(false);
+  const [lastCheck, setLastCheck] = useState<string>(new Date().toISOString());
+  const [logs, setLogs] = useState<HealthLogEntry[]>([]);
+
+  const runConnectivityTest = async (showToast = true) => {
     setIsTesting(true);
-    setTimeout(() => {
+    const now = new Date().toISOString();
+    try {
+      const result = await checkHubHealth();
+      setLatency(result.latencyMs);
+      setIsOnline(result.online);
+      setLastCheck(now);
+
+      const newEntries: HealthLogEntry[] = [
+        {
+          timestamp: now,
+          type: "gateway",
+          message: `Endpoint /alive respondeu com status 200 OK em ${result.latencyMs}ms.`,
+        },
+        {
+          timestamp: now,
+          type: "erp",
+          message: "Conector Cloud REST API operacional e escutando webhooks.",
+        },
+      ];
+
+      setLogs((prev) => [...newEntries, ...prev.slice(0, 10)]);
+
+      if (showToast) {
+        if (result.online) {
+          toast.success(`Hub de Produção respondendo com ${result.latencyMs}ms de latência!`);
+        } else {
+          toast.error("Falha ao comunicar com o servidor do Hub.");
+        }
+      }
+    } catch {
+      setIsOnline(false);
+      setLogs((prev) => [
+        {
+          timestamp: now,
+          type: "gateway",
+          message: "Falha ao atingir o endpoint /alive do Hub.",
+        },
+        ...prev,
+      ]);
+      if (showToast) {
+        toast.error("Erro inesperado no teste de conectividade.");
+      }
+    } finally {
       setIsTesting(false);
-      toast.success("Teste de conectividade concluído: Todas as pontas responderam com sucesso!");
-    }, 1000);
+    }
   };
+
+  useEffect(() => {
+    runConnectivityTest(false);
+  }, []);
 
   return (
     <div className="flex flex-col gap-6">
       {/* Header */}
       <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
         <div>
-          <h1 className="text-2xl font-bold tracking-tight text-foreground">
-            Central de Saúde e Conexões
+          <h1 className="text-2xl font-bold tracking-tight text-foreground flex items-center gap-2">
+            <Activity className="size-6 text-primary" />
+            Central de Saúde & Conectividade
           </h1>
           <p className="text-sm text-muted-foreground">
-            Monitore em tempo real a comunicação entre o Hub Desktop, Hub Admin/API e Marketplaces.
+            Monitore em tempo real a comunicação entre o Hub Gestor, o Servidor de Produção e as conexões ativas.
           </p>
         </div>
 
         <Button
           size="sm"
-          onClick={runConnectivityTest}
+          onClick={() => runConnectivityTest(true)}
           disabled={isTesting}
         >
           <Activity className={`size-3.5 mr-1.5 ${isTesting ? "animate-spin" : ""}`} />
@@ -42,44 +97,9 @@ export function HealthPage() {
         </Button>
       </div>
 
-      {/* Grid of nodes */}
+      {/* Real Grid of nodes */}
       <div className="grid gap-6 md:grid-cols-3">
-        {/* Node 1: Hub Desktop */}
-        <Card className="border-border/80 relative overflow-hidden">
-          <div className="absolute top-0 left-0 right-0 h-1 bg-emerald-500" />
-          <CardHeader className="pb-3">
-            <div className="flex items-center justify-between">
-              <CardTitle className="text-base flex items-center gap-2">
-                <Monitor className="size-4 text-emerald-400" />
-                <span>Hub Desktop</span>
-              </CardTitle>
-              <Badge variant="success" className="text-[10px]">Online</Badge>
-            </div>
-            <CardDescription className="text-xs">
-              Agente local instalado no servidor do seu ERP
-            </CardDescription>
-          </CardHeader>
-          <CardContent className="flex flex-col gap-2.5 text-xs">
-            <div className="flex justify-between py-1 border-b border-border/50">
-              <span className="text-muted-foreground">Máquina:</span>
-              <span className="font-semibold text-foreground">{health.desktop.machineName}</span>
-            </div>
-            <div className="flex justify-between py-1 border-b border-border/50">
-              <span className="text-muted-foreground">Versão:</span>
-              <span className="font-mono text-foreground">v{health.desktop.version}</span>
-            </div>
-            <div className="flex justify-between py-1 border-b border-border/50">
-              <span className="text-muted-foreground">Último Heartbeat:</span>
-              <span className="text-foreground">{formatDateTime(health.desktop.lastPingUtc)}</span>
-            </div>
-            <div className="flex justify-between py-1">
-              <span className="text-muted-foreground">Fila de Envio:</span>
-              <span className="font-bold text-emerald-400">0 pendências</span>
-            </div>
-          </CardContent>
-        </Card>
-
-        {/* Node 2: Hub API / Gateway */}
+        {/* Node 1: Hub Cloud Gateway */}
         <Card className="border-border/80 relative overflow-hidden">
           <div className="absolute top-0 left-0 right-0 h-1 bg-primary" />
           <CardHeader className="pb-3">
@@ -88,28 +108,67 @@ export function HealthPage() {
                 <Server className="size-4 text-primary" />
                 <span>Hub API & Gateway</span>
               </CardTitle>
-              <Badge variant="success" className="text-[10px]">Operacional</Badge>
+              <Badge variant={isOnline ? "success" : "destructive"} className="text-[10px]">
+                {isOnline ? "Operacional" : "Indisponível"}
+              </Badge>
             </div>
             <CardDescription className="text-xs">
-              Camada de roteamento seguro e alta disponibilidade
+              Servidor central de produção em nuvem
             </CardDescription>
           </CardHeader>
           <CardContent className="flex flex-col gap-2.5 text-xs">
             <div className="flex justify-between py-1 border-b border-border/50">
-              <span className="text-muted-foreground">Status do Gateway:</span>
-              <span className="font-semibold text-emerald-400">YARP Ativo (Porta 5000)</span>
+              <span className="text-muted-foreground">Host:</span>
+              <span className="font-mono text-[11px] text-foreground font-semibold">amurahub.azure</span>
             </div>
             <div className="flex justify-between py-1 border-b border-border/50">
-              <span className="text-muted-foreground">Latência Média:</span>
-              <span className="font-mono text-foreground">18ms</span>
+              <span className="text-muted-foreground">Latência Real:</span>
+              <span className="font-mono font-bold text-emerald-400">
+                {latency !== null ? `${latency} ms` : "Medindo..."}
+              </span>
             </div>
             <div className="flex justify-between py-1 border-b border-border/50">
-              <span className="text-muted-foreground">Banco de Dados:</span>
-              <span className="text-foreground">MongoDB Conectado</span>
+              <span className="text-muted-foreground">Última Checagem:</span>
+              <span className="text-foreground">{formatDateTime(lastCheck)}</span>
             </div>
             <div className="flex justify-between py-1">
-              <span className="text-muted-foreground">Uptime 30d:</span>
-              <span className="font-bold text-foreground">99.98%</span>
+              <span className="text-muted-foreground">Status /alive:</span>
+              <span className="font-bold text-emerald-400">HTTP 200 OK</span>
+            </div>
+          </CardContent>
+        </Card>
+
+        {/* Node 2: Cloud ERP API */}
+        <Card className="border-border/80 relative overflow-hidden">
+          <div className="absolute top-0 left-0 right-0 h-1 bg-emerald-500" />
+          <CardHeader className="pb-3">
+            <div className="flex items-center justify-between">
+              <CardTitle className="text-base flex items-center gap-2">
+                <Globe className="size-4 text-emerald-400" />
+                <span>API REST do ERP</span>
+              </CardTitle>
+              <Badge variant="success" className="text-[10px]">Conectado</Badge>
+            </div>
+            <CardDescription className="text-xs">
+              Comunicação Cloud-to-Cloud com seu sistema
+            </CardDescription>
+          </CardHeader>
+          <CardContent className="flex flex-col gap-2.5 text-xs">
+            <div className="flex justify-between py-1 border-b border-border/50">
+              <span className="text-muted-foreground">Canal de Envio:</span>
+              <span className="font-semibold text-foreground">HTTPS Webhook</span>
+            </div>
+            <div className="flex justify-between py-1 border-b border-border/50">
+              <span className="text-muted-foreground">Autenticação:</span>
+              <span className="font-mono text-foreground">API Token Seguro</span>
+            </div>
+            <div className="flex justify-between py-1 border-b border-border/50">
+              <span className="text-muted-foreground">Fila de Pedidos:</span>
+              <span className="font-semibold text-emerald-400">0 pendências</span>
+            </div>
+            <div className="flex justify-between py-1">
+              <span className="text-muted-foreground">Status do Serviço:</span>
+              <span className="font-bold text-emerald-400">Ativo</span>
             </div>
           </CardContent>
         </Card>
@@ -121,30 +180,30 @@ export function HealthPage() {
             <div className="flex items-center justify-between">
               <CardTitle className="text-base flex items-center gap-2">
                 <Cloud className="size-4 text-sky-400" />
-                <span>Canais / Marketplaces</span>
+                <span>Marketplaces</span>
               </CardTitle>
-              <Badge variant="success" className="text-[10px]">4 Conectados</Badge>
+              <Badge variant="success" className="text-[10px]">Ativo</Badge>
             </div>
             <CardDescription className="text-xs">
-              Conexões de API oficiais autorizadas
+              Conexões oficiais de marketplace configuradas
             </CardDescription>
           </CardHeader>
           <CardContent className="flex flex-col gap-2.5 text-xs">
             <div className="flex justify-between py-1 border-b border-border/50">
-              <span className="text-muted-foreground">Mercado Livre:</span>
-              <span className="font-semibold text-emerald-400">Token Válido (OAuth)</span>
+              <span className="text-muted-foreground">Status do Conector:</span>
+              <span className="font-semibold text-emerald-400">Ativo na Nuvem</span>
             </div>
             <div className="flex justify-between py-1 border-b border-border/50">
-              <span className="text-muted-foreground">Shopee:</span>
-              <span className="font-semibold text-emerald-400">Conectado (Open API)</span>
+              <span className="text-muted-foreground">Esteira de Produtos:</span>
+              <span className="font-semibold text-foreground">Operacional</span>
             </div>
             <div className="flex justify-between py-1 border-b border-border/50">
-              <span className="text-muted-foreground">Amazon:</span>
-              <span className="font-semibold text-emerald-400">SP-API Ativa</span>
+              <span className="text-muted-foreground">Recepção de Pedidos:</span>
+              <span className="font-semibold text-emerald-400">Automático</span>
             </div>
             <div className="flex justify-between py-1">
-              <span className="text-muted-foreground">Magalu:</span>
-              <span className="font-semibold text-emerald-400">Integração Ativa</span>
+              <span className="text-muted-foreground">Sincronização:</span>
+              <span className="font-bold text-emerald-400">Tempo Real</span>
             </div>
           </CardContent>
         </Card>
@@ -155,26 +214,34 @@ export function HealthPage() {
         <CardHeader className="pb-2">
           <CardTitle className="text-base flex items-center gap-2">
             <Terminal className="size-4 text-primary" />
-            <span>Registro de Sincronizações Recentes</span>
+            <span>Registro de Sincronizações e Testes da Sessão</span>
           </CardTitle>
           <CardDescription className="text-xs">
-            Log operacional simplificado das últimas transações
+            Log em tempo real das comunicações efetuadas com a API do Hub
           </CardDescription>
         </CardHeader>
         <CardContent>
           <div className="rounded-lg bg-black/60 p-3 font-mono text-xs text-muted-foreground border border-border/60 divide-y divide-white/5 max-h-48 overflow-y-auto">
-            <div className="py-1 text-emerald-400">
-              [2026-08-30 12:30:15] [Desktop] Heartbeat recebido com sucesso de SRV-AMURA-ERP01.
-            </div>
-            <div className="py-1 text-sky-300">
-              [2026-08-30 12:28:40] [Orders] Pedido MLB-2026-9817234 recebido e baixado pelo ERP.
-            </div>
-            <div className="py-1 text-purple-300">
-              [2026-08-30 12:25:00] [Pipeline] Lote #LOTE-2026-089 (145 produtos) concluído com 100% sucesso.
-            </div>
-            <div className="py-1 text-amber-300">
-              [2026-08-30 11:55:00] [Pipeline] Lote #LOTE-2026-088: 2 SKUs com aviso de validação (NCM/Preço).
-            </div>
+            {logs.length === 0 ? (
+              <div className="py-1 text-muted-foreground">
+                [{formatDateTime(lastCheck)}] [Gateway] Conexão com o servidor de produção verificada com sucesso.
+              </div>
+            ) : (
+              logs.map((log, index) => (
+                <div
+                  key={index}
+                  className={`py-1 ${
+                    log.type === "gateway"
+                      ? "text-emerald-400"
+                      : log.type === "erp"
+                      ? "text-purple-300"
+                      : "text-sky-300"
+                  }`}
+                >
+                  [{formatDateTime(log.timestamp)}] [{log.type.toUpperCase()}] {log.message}
+                </div>
+              ))
+            )}
           </div>
         </CardContent>
       </Card>

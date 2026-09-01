@@ -1,4 +1,4 @@
-import { Trophy, ArrowUpRight, TrendingUp, TrendingDown, Package } from "lucide-react";
+import { Trophy, ArrowUpRight, TrendingUp, TrendingDown, Package, PackageX, Tag, Sparkles, Layers } from "lucide-react";
 import { Link } from "react-router-dom";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
@@ -22,7 +22,7 @@ export function TopProductsWidget({ products }: TopProductsWidgetProps) {
             <span>Produtos Campeões de Venda</span>
           </CardTitle>
           <CardDescription className="text-xs">
-            Pergunta 4: O que está se destacando em faturamento e volume
+            Faturamento, volume e variação campeã dos produtos mais vendidos no Hub
           </CardDescription>
         </div>
         <Button asChild variant="ghost" size="sm" className="text-xs text-primary">
@@ -34,86 +34,123 @@ export function TopProductsWidget({ products }: TopProductsWidgetProps) {
       </CardHeader>
 
       <CardContent className="flex flex-col gap-3">
-        {/* Champion product highlight */}
-        {championProduct && (
-          <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3 rounded-xl border border-amber-500/30 bg-gradient-to-r from-amber-500/10 via-amber-500/5 to-transparent p-3.5">
-            <div className="flex items-center gap-3">
-              <div className="flex size-10 shrink-0 items-center justify-center rounded-lg bg-amber-500/20 text-amber-400 font-bold text-base border border-amber-500/30">
-                1º
-              </div>
-              <div>
-                <div className="flex items-center gap-2">
-                  <Badge variant="warning" className="text-[10px] px-1.5 py-0 uppercase">
-                    Campeão Absoluto
-                  </Badge>
-                  <span className="text-[11px] text-muted-foreground font-mono">{championProduct.sku}</span>
-                </div>
-                <p className="text-sm font-semibold text-foreground mt-0.5 line-clamp-1">
-                  {championProduct.title}
-                </p>
-              </div>
-            </div>
-
-            <div className="flex items-center gap-4 w-full sm:w-auto justify-between sm:justify-end">
-              <div className="text-left sm:text-right">
-                <p className="text-xs text-muted-foreground">Faturamento</p>
-                <p className="text-sm font-bold text-amber-300">
-                  {formatCurrency(championProduct.revenue)}
-                </p>
-              </div>
-              <div className="text-left sm:text-right">
-                <p className="text-xs text-muted-foreground">Volume</p>
-                <p className="text-sm font-semibold text-foreground">
-                  {formatNumber(championProduct.unitsSold)} un
-                </p>
-              </div>
-            </div>
+        {products.length === 0 ? (
+          <div className="py-10 flex flex-col items-center justify-center gap-2 text-center">
+            <PackageX className="size-8 text-muted-foreground/50" />
+            <p className="text-xs font-semibold text-foreground">Nenhum produto vendido ainda</p>
+            <p className="text-[11px] text-muted-foreground max-w-xs">
+              O ranking dos produtos mais vendidos será construído automaticamente conforme os pedidos forem integrados.
+            </p>
           </div>
-        )}
+        ) : (
+          <>
+            {/* Champion product highlight */}
+            {championProduct && (
+              <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3 rounded-xl border border-amber-500/30 bg-gradient-to-r from-amber-500/10 via-amber-500/5 to-transparent p-3.5">
+                <div className="flex items-center gap-3">
+                  <div className="flex size-10 shrink-0 items-center justify-center rounded-lg bg-amber-500/20 text-amber-400 font-bold text-base border border-amber-500/30">
+                    1º
+                  </div>
+                  <div>
+                    <div className="flex flex-wrap items-center gap-2">
+                      <Badge variant="warning" className="text-[10px] px-1.5 py-0 uppercase font-bold">
+                        1º Mais Vendido
+                      </Badge>
+                      <span className="text-xs font-mono font-bold text-primary bg-primary/10 px-2 py-0.5 rounded">
+                        Ref: {championProduct.reference || championProduct.sku}
+                      </span>
+                      {championProduct.topVariationSku && championProduct.topVariationSku !== championProduct.reference && (
+                        <span className="text-[11px] font-mono text-muted-foreground">
+                          SKU: {championProduct.topVariationSku}
+                        </span>
+                      )}
+                    </div>
 
-        {/* Other top products list */}
-        <div className="divide-y divide-border/50">
-          {products.slice(1).map((product, index) => (
-            <div
-              key={product.id}
-              className="flex items-center justify-between py-2.5 hover:bg-muted/30 px-2 rounded-lg transition-colors"
-            >
-              <div className="flex items-center gap-3 min-w-0 pr-2">
-                <span className="flex size-6 shrink-0 items-center justify-center rounded-full bg-muted text-xs font-semibold text-muted-foreground">
-                  {index + 2}º
-                </span>
-                <div className="min-w-0">
-                  <p className="text-xs font-medium text-foreground truncate">
-                    {product.title}
-                  </p>
-                  <p className="text-[11px] text-muted-foreground font-mono">
-                    {product.sku} • {product.category}
-                  </p>
+                    <p className="text-sm font-bold text-foreground mt-1 line-clamp-1">
+                      {championProduct.title}
+                    </p>
+
+                    {championProduct.topVariation && (
+                      <div className="mt-1 flex items-center gap-1.5">
+                        <Badge variant="secondary" className="text-[10px] font-semibold text-emerald-400 bg-emerald-500/10 border-emerald-500/30">
+                          🔥 Variação mais vendida: {championProduct.topVariation} ({championProduct.topVariationUnits} un)
+                        </Badge>
+                      </div>
+                    )}
+                  </div>
+                </div>
+
+                <div className="flex items-center gap-4 w-full sm:w-auto justify-between sm:justify-end">
+                  <div className="text-left sm:text-right">
+                    <p className="text-xs text-muted-foreground">Faturamento Total</p>
+                    <p className="text-sm font-bold text-amber-300">
+                      {formatCurrency(championProduct.revenue)}
+                    </p>
+                  </div>
+                  <div className="text-left sm:text-right">
+                    <p className="text-xs text-muted-foreground">Volume Vendido</p>
+                    <p className="text-sm font-semibold text-foreground">
+                      {formatNumber(championProduct.unitsSold)} un
+                    </p>
+                  </div>
                 </div>
               </div>
+            )}
 
-              <div className="flex items-center gap-4 shrink-0 text-right">
-                <div>
-                  <p className="text-xs font-semibold text-foreground">
-                    {formatCurrency(product.revenue)}
-                  </p>
-                  <p className="text-[11px] text-muted-foreground">
-                    {formatNumber(product.unitsSold)} un
-                  </p>
-                </div>
-                <div className="w-14 text-right">
-                  <Badge
-                    variant={product.trendPercent >= 0 ? "success" : "destructive"}
-                    className="text-[10px] px-1 py-0 font-normal"
+            {/* Other top products list */}
+            {products.length > 1 && (
+              <div className="divide-y divide-border/50">
+                {products.slice(1).map((product, index) => (
+                  <div
+                    key={product.id}
+                    className="flex items-center justify-between py-2.5 hover:bg-muted/30 px-2 rounded-lg transition-colors"
                   >
-                    {product.trendPercent >= 0 ? "+" : ""}
-                    {product.trendPercent}%
-                  </Badge>
-                </div>
+                    <div className="flex items-center gap-3 min-w-0 pr-2">
+                      <span className="flex size-6 shrink-0 items-center justify-center rounded-full bg-muted text-xs font-semibold text-muted-foreground">
+                        {index + 2}º
+                      </span>
+                      <div className="min-w-0">
+                        <p className="text-xs font-semibold text-foreground truncate">
+                          {product.title}
+                        </p>
+                        <div className="text-[11px] text-muted-foreground font-mono flex flex-wrap items-center gap-2 mt-0.5">
+                          <span className="bg-muted px-1.5 py-0.2 rounded font-semibold text-foreground">
+                            Ref: {product.reference || product.sku}
+                          </span>
+                          {product.topVariation && (
+                            <Badge variant="outline" className="text-[10px] text-emerald-400 border-emerald-500/30">
+                              Top variação: {product.topVariation} ({product.topVariationUnits} un)
+                            </Badge>
+                          )}
+                        </div>
+                      </div>
+                    </div>
+
+                    <div className="flex items-center gap-4 shrink-0 text-right">
+                      <div>
+                        <p className="text-xs font-semibold text-foreground">
+                          {formatCurrency(product.revenue)}
+                        </p>
+                        <p className="text-[11px] text-muted-foreground">
+                          {formatNumber(product.unitsSold)} un
+                        </p>
+                      </div>
+                      <div className="w-14 text-right">
+                        <Badge
+                          variant={product.trendPercent >= 0 ? "success" : "destructive"}
+                          className="text-[10px] px-1 py-0 font-normal"
+                        >
+                          {product.trendPercent >= 0 ? "+" : ""}
+                          {product.trendPercent}%
+                        </Badge>
+                      </div>
+                    </div>
+                  </div>
+                ))}
               </div>
-            </div>
-          ))}
-        </div>
+            )}
+          </>
+        )}
       </CardContent>
     </Card>
   );

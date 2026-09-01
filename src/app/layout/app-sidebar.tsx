@@ -114,8 +114,8 @@ export function AppSidebar({ isMobileOpen = false, onMobileClose }: AppSidebarPr
               <p className="text-xs font-semibold text-sidebar-foreground truncate">
                 {user?.customerName || "Minha Loja"}
               </p>
-              <p className="text-[10px] font-mono text-muted-foreground truncate">
-                {user?.customerId || "ID da Loja"}
+              <p className="text-[10px] text-muted-foreground truncate">
+                {user?.email || "Conta Ativa"}
               </p>
             </div>
           </div>

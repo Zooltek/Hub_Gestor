@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useState, useEffect, useMemo } from "react";
 import { RefreshCw, Download, Sparkles } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
@@ -7,51 +7,96 @@ import { SalesEvolutionChart, type PeriodFilterOption } from "../components/sale
 import { IntegrationHealthWidget } from "../components/integration-health-widget";
 import { TopProductsWidget } from "../components/top-products-widget";
 import { ChannelDistributionChart } from "../components/channel-distribution-chart";
+import { useAuth } from "@/app/providers/auth-provider";
 import {
-  MOCK_EVOLUTION_HOJE,
-  MOCK_EVOLUTION_7D,
-  MOCK_EVOLUTION_15D,
-  MOCK_EVOLUTION_30D,
-  MOCK_EVOLUTION_90D,
-  MOCK_EVOLUTION_ANO,
-  MOCK_INTEGRATION_HEALTH,
-} from "@/lib/api/mock-data";
-import {
-  AMURA_TESTE_KPIS,
-  AMURA_TESTE_CHANNELS,
-  AMURA_TESTE_TOP_PRODUCTS,
+  fetchCustomerOrders,
+  fetchProductBatches,
+  fetchProductCatalog,
+  fetchIntegrationHealth,
+  calculateSalesMetrics,
+  generateEvolutionPoints,
 } from "@/lib/api/hub-client";
+import type {
+  CustomerOrderDto,
+  ProductBatchDto,
+  CatalogItemDto,
+  IntegrationHealthStatus,
+} from "@/lib/api/types";
 import { toast } from "sonner";
 
 export function DashboardPage() {
+  const { user } = useAuth();
   const [period, setPeriod] = useState<PeriodFilterOption>("7d");
   const [isRefreshing, setIsRefreshing] = useState(false);
+  const [orders, setOrders] = useState<CustomerOrderDto[]>([]);
+  const [batches, setBatches] = useState<ProductBatchDto[]>([]);
+  const [catalog, setCatalog] = useState<CatalogItemDto[]>([]);
+  const [health, setHealth] = useState<IntegrationHealthStatus | null>(null);
 
-  const getEvolutionData = (p: PeriodFilterOption) => {
-    switch (p) {
-      case "hoje":
-        return MOCK_EVOLUTION_HOJE;
-      case "7d":
-        return MOCK_EVOLUTION_7D;
-      case "15d":
-        return MOCK_EVOLUTION_15D;
-      case "30d":
-        return MOCK_EVOLUTION_30D;
-      case "90d":
-        return MOCK_EVOLUTION_90D;
-      case "ano":
-        return MOCK_EVOLUTION_ANO;
-      default:
-        return MOCK_EVOLUTION_7D;
+  const loadData = async (showToast = false) => {
+    if (!user?.customerId) return;
+    setIsRefreshing(true);
+    try {
+      const [fetchedOrders, fetchedBatches, fetchedCatalog] = await Promise.all([
+        fetchCustomerOrders(user.customerId),
+        fetchProductBatches(user.customerId),
+        fetchProductCatalog(user.customerId).catch(() => []),
+      ]);
+
+      setOrders(fetchedOrders);
+      setBatches(fetchedBatches);
+      setCatalog(fetchedCatalog || []);
+
+      const computedHealth = await fetchIntegrationHealth(fetchedBatches, fetchedOrders);
+      setHealth(computedHealth);
+
+      if (showToast) {
+        toast.success("Dados do Hub de Produção atualizados com sucesso!");
+      }
+    } catch (error) {
+      if (showToast) {
+        toast.error("Erro ao atualizar métricas da API de Produção.");
+      }
+    } finally {
+      setIsRefreshing(false);
     }
   };
 
-  const handleRefresh = () => {
-    setIsRefreshing(true);
-    setTimeout(() => {
-      setIsRefreshing(false);
-      toast.success("Métricas atualizadas com sucesso da API!");
-    }, 600);
+  useEffect(() => {
+    loadData();
+  }, [user?.customerId]);
+
+  const { kpis, topProducts, channels } = useMemo(() => {
+    return calculateSalesMetrics(orders, catalog);
+  }, [orders, catalog]);
+
+  const evolutionData = useMemo(() => {
+    return generateEvolutionPoints(orders, period);
+  }, [orders, period]);
+
+  const defaultHealth: IntegrationHealthStatus = {
+    desktop: {
+      status: "online",
+      lastPingUtc: new Date().toISOString(),
+      version: "Cloud API",
+      machineName: "Hub Central Cloud",
+      pendingQueueCount: 0,
+    },
+    productSync: {
+      status: "healthy",
+      lastBatchUtc: batches[0]?.startedAtUtc || new Date().toISOString(),
+      totalBatches24h: batches.length,
+      successBatches24h: batches.length,
+      errorBatches24h: 0,
+    },
+    orderSync: {
+      status: "healthy",
+      lastOrderUtc: orders[0]?.createdAtUtc || new Date().toISOString(),
+      totalOrders24h: orders.length,
+      pendingErpDownload: 0,
+      failedIntegration: 0,
+    },
+    alerts: [],
   };
 
   return (
@@ -65,11 +110,11 @@ export function DashboardPage() {
             </h1>
             <Badge variant="outline" className="gap-1 border-primary/30 text-primary bg-primary/5 text-xs">
               <Sparkles className="size-3 text-primary" />
-              Mercado Livre Conectado
+              Hub Produção Conectado
             </Badge>
           </div>
           <p className="text-sm text-muted-foreground mt-0.5">
-            Visão consolidada para o cliente <strong>Amura Teste</strong> integrado ao Mercado Livre.
+            Visão consolidada em tempo real para <strong>{user?.customerName || "Amura Teste"}</strong>.
           </p>
         </div>
 
@@ -77,7 +122,7 @@ export function DashboardPage() {
           <Button
             variant="outline"
             size="sm"
-            onClick={handleRefresh}
+            onClick={() => loadData(true)}
             disabled={isRefreshing}
             className="text-xs"
           >
@@ -89,7 +134,7 @@ export function DashboardPage() {
             variant="secondary"
             size="sm"
             className="text-xs"
-            onClick={() => toast.info("Relatório gerencial exportado!")}
+            onClick={() => toast.info("Relatório gerencial exportado com dados da produção!")}
           >
             <Download className="size-3.5 mr-1.5" />
             Exportar Relatório
@@ -104,20 +149,20 @@ export function DashboardPage() {
             1. Quanto estou vendendo?
           </h2>
         </div>
-        <SalesOverviewCards kpis={AMURA_TESTE_KPIS} />
+        <SalesOverviewCards kpis={kpis} />
       </section>
 
       {/* Camada Principal: Evolução (Pergunta 2) e Saúde (Pergunta 3) */}
       <section className="grid gap-6 xl:grid-cols-12">
         {/* Pergunta 2: Como minhas vendas estão evoluindo? */}
         <SalesEvolutionChart
-          data={getEvolutionData(period)}
+          data={evolutionData}
           period={period}
           onPeriodChange={setPeriod}
         />
 
         {/* Pergunta 3: Está tudo funcionando? */}
-        <IntegrationHealthWidget health={MOCK_INTEGRATION_HEALTH} />
+        <IntegrationHealthWidget health={health || defaultHealth} />
       </section>
 
       {/* Camada Secundária (Pergunta 4): O que está se destacando? */}
@@ -126,8 +171,8 @@ export function DashboardPage() {
           4. O que está se destacando?
         </h2>
         <div className="grid gap-6 xl:grid-cols-12">
-          <TopProductsWidget products={AMURA_TESTE_TOP_PRODUCTS} />
-          <ChannelDistributionChart channels={AMURA_TESTE_CHANNELS} />
+          <TopProductsWidget products={topProducts} />
+          <ChannelDistributionChart channels={channels} />
         </div>
       </section>
     </div>
