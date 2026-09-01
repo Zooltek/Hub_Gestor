@@ -3,6 +3,7 @@ import { Outlet, useLocation, Link } from "react-router-dom";
 import { AppSidebar } from "./app-sidebar";
 import { Bell, ChevronRight, Menu } from "lucide-react";
 import { Button } from "@/components/ui/button";
+import { ThemeToggle } from "@/components/ui/theme-toggle";
 import { toast } from "sonner";
 
 const ROUTE_LABELS: Record<string, string> = {
@@ -67,6 +68,8 @@ export function AppShell() {
               <span className="hidden sm:inline">API REST Cloud Conectada</span>
               <span className="sm:hidden">Online</span>
             </Link>
+
+            <ThemeToggle />
 
             <Button
               variant="ghost"
