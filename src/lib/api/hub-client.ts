@@ -9,6 +9,7 @@ import type {
   CustomerOrderDto,
   ProductBatchDto,
   ProductChangeDto,
+  ProductChangeVariationDto,
   CatalogItemDto,
 } from "./types";
 
@@ -473,6 +474,40 @@ export async function fetchProductBatchById(batchId: string): Promise<{ batch: P
         };
 
         const statusLabel = statusMap[item.status] || (item.diff?.length > 0 ? "Alterado" : "Sem alteração");
+        const reviewLabel = item.status === 7 ? "Bloqueada" : item.requiresReview ? "Manual" : "Automática";
+
+        const parsedVariations: ProductChangeVariationDto[] = Array.isArray(variations) && variations.length > 0
+          ? variations.map((v: any) => {
+              const vAttrs = Array.isArray(v.variationAttributes) ? v.variationAttributes : [];
+              const corObj = vAttrs.find((a: any) => a.key?.toLowerCase() === "cor" || a.key?.toLowerCase() === "nomecor");
+              const tamObj = vAttrs.find((a: any) => a.key?.toLowerCase() === "tamanho" || a.key?.toLowerCase() === "grade");
+              const size = v.tamanho || tamObj?.value || v.size || "";
+              const color = v.nomeCor || corObj?.value || v.cor || v.color || "";
+              const colorCode = v.cor || v.colorCode || "";
+              const variationName = [size, color].filter(Boolean).join(" - ") || v.descricao || v.nome || "Padrão";
+
+              const vStockRaw = v.estoque ?? v.stock ?? v.quantidade ?? v.qty ?? 0;
+              const vStock = typeof vStockRaw === "number" ? vStockRaw : parseInt(String(vStockRaw), 10) || 0;
+
+              const vPriceRaw = v.precoVenda ?? v.preco ?? v.price ?? rawPrice;
+              const vPrice = typeof vPriceRaw === "number" ? vPriceRaw : parseFloat(String(vPriceRaw).replace(",", ".")) || 0;
+
+              return {
+                sku: v.sku || item.sku || item.reference,
+                variationName,
+                color,
+                colorCode,
+                size,
+                barcode: v.codigoBarras || v.barcode || "",
+                stock: vStock,
+                price: vPrice,
+                statusLabel: statusLabel,
+                reviewLabel: reviewLabel,
+                dispatchTargets: item.dispatchTargets || ["Shopify"],
+                createdAtUtc: item.createdAt || batchObj.createdAt || new Date().toISOString(),
+              };
+            })
+          : [];
 
         return {
           id: item.id || item.reference,
@@ -481,6 +516,7 @@ export async function fetchProductBatchById(batchId: string): Promise<{ batch: P
           reference: item.reference || item.sku,
           status: item.status ?? 0,
           statusLabel,
+          reviewLabel,
           title,
           category: shared.nomeCategoria || shared.categoria || incoming.nomeCategoria || "Geral",
           price,
@@ -492,7 +528,8 @@ export async function fetchProductBatchById(batchId: string): Promise<{ batch: P
           diff: Array.isArray(item.diff) ? item.diff : [],
           savedSnapshot: item.savedSnapshot,
           incomingSnapshot: item.incomingSnapshot,
-          variationsCount: Array.isArray(variations) && variations.length > 0 ? variations.length : 1,
+          variationsCount: parsedVariations.length || 1,
+          variations: parsedVariations,
           createdAtUtc: item.createdAt || batchObj.createdAt || new Date().toISOString(),
         };
       });

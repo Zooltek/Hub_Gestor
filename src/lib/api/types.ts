@@ -170,6 +170,21 @@ export interface ProductFieldDiffDto {
   category?: string;
 }
 
+export interface ProductChangeVariationDto {
+  sku: string;
+  variationName: string;
+  color?: string;
+  colorCode?: string;
+  size?: string;
+  barcode?: string;
+  stock: number;
+  price?: number;
+  statusLabel?: string;
+  reviewLabel?: string;
+  dispatchTargets?: string[];
+  createdAtUtc?: string;
+}
+
 export interface ProductChangeDto {
   id: string;
   customerId: string;
@@ -177,6 +192,7 @@ export interface ProductChangeDto {
   reference: string;
   status: number;
   statusLabel: string;
+  reviewLabel?: string;
   title: string;
   category: string;
   price: number;
@@ -189,6 +205,7 @@ export interface ProductChangeDto {
   savedSnapshot?: any;
   incomingSnapshot?: any;
   variationsCount?: number;
+  variations?: ProductChangeVariationDto[];
   createdAtUtc: string;
 }
 

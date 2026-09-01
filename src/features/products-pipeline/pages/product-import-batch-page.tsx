@@ -1,7 +1,8 @@
-import { useState, useEffect } from "react";
+import { useState, useEffect, useMemo, Fragment } from "react";
 import { useParams, Link } from "react-router-dom";
 import {
   ChevronLeft,
+  ChevronRight,
   CheckCircle,
   XCircle,
   AlertTriangle,
@@ -13,7 +14,6 @@ import {
   FileCode,
   CheckSquare,
   Square,
-  ShieldAlert,
   PackageX,
   GitCompare,
   Layers3,
@@ -41,6 +41,7 @@ import {
   DialogFooter,
 } from "@/components/ui/dialog";
 import { ConcurrencyBanner } from "@/components/shared/concurrency-banner";
+import { StatusBadge } from "@/components/shared/status-badge";
 import { useConcurrencyLock } from "@/hooks/use-concurrency-lock";
 import { useAuth } from "@/app/providers/auth-provider";
 import {
@@ -48,9 +49,24 @@ import {
   approveProductChangesBatch,
   forceDispatchProductChange,
 } from "@/lib/api/hub-client";
-import type { ProductBatchDto, ProductChangeDto } from "@/lib/api/types";
-import { formatCurrency, formatDateTime, formatNumber } from "@/lib/utils";
+import type { ProductBatchDto, ProductChangeDto, ProductChangeVariationDto } from "@/lib/api/types";
+import type { StatusTone } from "@/lib/status";
+import { cn, formatCurrency, formatDateTime, formatNumber } from "@/lib/utils";
 import { toast } from "sonner";
+
+function getBatchStatusTone(statusLabel: string): StatusTone {
+  const norm = statusLabel.toLowerCase();
+  if (norm.includes("sem altera") || norm.includes("aprovado") || norm.includes("despachado")) {
+    return "default";
+  }
+  if (norm.includes("pendente") || norm.includes("despachando")) {
+    return "warning";
+  }
+  if (norm.includes("erro") || norm.includes("rejeitado")) {
+    return "danger";
+  }
+  return "default";
+}
 
 export function ProductImportBatchPage() {
   const { batchId } = useParams();
@@ -61,6 +77,7 @@ export function ProductImportBatchPage() {
   const [searchTerm, setSearchTerm] = useState("");
   const [statusFilter, setStatusFilter] = useState("all");
   const [selectedIds, setSelectedIds] = useState<string[]>([]);
+  const [expandedReferences, setExpandedReferences] = useState<string[]>([]);
   const [inspectedItem, setInspectedItem] = useState<ProductChangeDto | null>(null);
   const [inspectTab, setInspectTab] = useState<"diff" | "snapshots" | "raw">("diff");
   const [isLoading, setIsLoading] = useState(false);
@@ -120,6 +137,49 @@ export function ProductImportBatchPage() {
     const matchesStatus = statusFilter === "all" || item.statusLabel === statusFilter;
     return matchesSearch && matchesStatus;
   });
+
+  const groupedItems = useMemo(() => {
+    const map = new Map<string, {
+      reference: string;
+      representativeItem: ProductChangeDto;
+      variations: ProductChangeVariationDto[];
+    }>();
+
+    filteredItems.forEach((item) => {
+      const ref = item.reference || item.sku;
+      if (!map.has(ref)) {
+        map.set(ref, {
+          reference: ref,
+          representativeItem: item,
+          variations: item.variations && item.variations.length > 0 ? item.variations : [
+            {
+              sku: item.sku,
+              variationName: "Padrão",
+              stock: item.stock,
+              price: item.price,
+              statusLabel: item.statusLabel,
+              reviewLabel: item.reviewLabel || (item.requiresReview ? "Manual" : "Automática"),
+              dispatchTargets: [item.dispatchTarget || "Shopify"],
+              createdAtUtc: item.createdAtUtc,
+            },
+          ],
+        });
+      } else {
+        const current = map.get(ref)!;
+        if (item.variations && item.variations.length > 0) {
+          current.variations = item.variations;
+        }
+      }
+    });
+
+    return Array.from(map.values());
+  }, [filteredItems]);
+
+  const toggleExpanded = (ref: string) => {
+    setExpandedReferences((prev) =>
+      prev.includes(ref) ? prev.filter((r) => r !== ref) : [...prev, ref]
+    );
+  };
 
   const handleToggleSelect = (id: string) => {
     setSelectedIds((prev) =>
@@ -203,57 +263,49 @@ export function ProductImportBatchPage() {
           </Button>
           <div>
             <div className="flex items-center gap-2">
-              <h1 className="text-xl font-bold tracking-tight text-foreground font-mono">
-                {currentBatch.fileName || currentBatch.batchNumber}
+              <h1 className="text-xl font-bold tracking-tight text-foreground flex items-center gap-2">
+                <Layers className="size-5 text-primary" />
+                Lote {currentBatch.fileName || currentBatch.batchNumber}
               </h1>
-              <Badge
-                variant={
-                  currentBatch.status === "CONCLUIDO" && currentBatch.errorItems === 0
-                    ? "success"
-                    : currentBatch.errorItems > 0
-                    ? "warning"
-                    : "secondary"
-                }
-                className="text-[10px]"
-              >
-                {currentBatch.errorItems > 0 ? "Com Alertas" : currentBatch.status}
+              <Badge variant={currentBatch.status === "ERRO" ? "destructive" : "success"} className="text-[10px]">
+                {currentBatch.status}
               </Badge>
             </div>
-            <p className="text-xs text-muted-foreground mt-0.5">
-              Arquivo importado em {formatDateTime(currentBatch.startedAtUtc)} • {items.length} produto(s) no lote
+            <p className="text-xs text-muted-foreground mt-0.5 font-mono">
+              ID: {currentBatch.id} • Iniciado em: {formatDateTime(currentBatch.startedAtUtc)}
             </p>
           </div>
         </div>
 
+        {/* Global Batch Actions */}
         <div className="flex items-center gap-2">
           <Button
             variant="outline"
             size="sm"
             onClick={() => loadBatchDetails(true)}
             disabled={isLoading}
+            className="h-8 text-xs gap-1.5"
           >
-            <RefreshCw className={`size-3.5 mr-1.5 ${isLoading ? "animate-spin" : ""}`} />
-            {isLoading ? "Sincronizando..." : "Atualizar"}
+            <RefreshCw className={`size-3.5 ${isLoading ? "animate-spin" : ""}`} />
+            Atualizar
           </Button>
 
-          {selectedIds.length > 0 && (
-            <Button
-              size="sm"
-              onClick={handleApproveSelected}
-              disabled={isActionInProgress || isLockedByOther}
-              className="gap-1.5 bg-emerald-600 hover:bg-emerald-700 text-white"
-            >
-              <CheckCircle className="size-3.5" />
-              Aprovar Selecionados ({selectedIds.length})
-            </Button>
-          )}
+          <Button
+            size="sm"
+            onClick={handleApproveSelected}
+            disabled={selectedIds.length === 0 || isActionInProgress}
+            className="h-8 text-xs gap-1.5"
+          >
+            <CheckCircle className="size-3.5" />
+            Aprovar selecionados ({selectedIds.length})
+          </Button>
 
           <Button
             variant="secondary"
             size="sm"
             onClick={handleForceDispatch}
-            disabled={isActionInProgress || isLockedByOther || items.length === 0}
-            className="gap-1.5"
+            disabled={isActionInProgress}
+            className="h-8 text-xs gap-1.5"
           >
             <Send className="size-3.5" />
             Forçar Despacho
@@ -262,18 +314,21 @@ export function ProductImportBatchPage() {
       </div>
 
       {/* Anti-collision Banner */}
-      <ConcurrencyBanner lock={activeLock} isLockedByMe={isLockedByMe} />
+      <ConcurrencyBanner
+        lock={activeLock}
+        isLockedByMe={isLockedByMe}
+      />
 
-      {/* KPI Stats */}
-      <div className="grid gap-4 sm:grid-cols-4">
+      {/* KPI Counters */}
+      <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
         <Card className="border-border/80">
           <CardContent className="p-3 flex items-center gap-2.5">
             <div className="p-2 rounded-lg bg-primary/10 text-primary">
               <Layers className="size-4" />
             </div>
             <div>
-              <p className="text-[11px] text-muted-foreground">Itens no Lote</p>
-              <p className="text-base font-bold text-foreground">{items.length}</p>
+              <p className="text-[11px] text-muted-foreground">Total de Itens</p>
+              <p className="text-base font-bold text-foreground">{currentBatch.totalItems || items.length}</p>
             </div>
           </CardContent>
         </Card>
@@ -366,7 +421,7 @@ export function ProductImportBatchPage() {
                 Carregando registros e snapshots dos produtos deste lote.
               </p>
             </div>
-          ) : filteredItems.length === 0 ? (
+          ) : groupedItems.length === 0 ? (
             <div className="p-12 flex flex-col items-center justify-center gap-3 text-muted-foreground">
               <PackageX className="size-8 text-muted-foreground/60" />
               <p className="text-sm font-medium text-foreground">Nenhum produto neste lote</p>
@@ -389,82 +444,153 @@ export function ProductImportBatchPage() {
                       )}
                     </button>
                   </TableHead>
-                  <TableHead>Referência / SKU</TableHead>
+                  <TableHead>Referência</TableHead>
                   <TableHead>Nome do produto / Descrição</TableHead>
                   <TableHead className="text-center">Variações</TableHead>
-                  <TableHead className="text-right">Preço</TableHead>
-                  <TableHead className="text-center">Estoque</TableHead>
                   <TableHead>Destinos</TableHead>
                   <TableHead>Status</TableHead>
-                  <TableHead className="text-right">Ação</TableHead>
+                  <TableHead>Revisão</TableHead>
+                  <TableHead>Criado em</TableHead>
+                  <TableHead className="text-right"></TableHead>
                 </TableRow>
               </TableHeader>
               <TableBody>
-                {filteredItems.map((item) => {
-                  const isSelected = selectedIds.includes(item.id);
+                {groupedItems.map((group) => {
+                  const rep = group.representativeItem;
+                  const isSelected = selectedIds.includes(rep.id);
+                  const isExpanded = expandedReferences.includes(group.reference);
+                  const hasMultipleVariations = group.variations.length > 1;
 
                   return (
-                    <TableRow key={item.id} className="hover:bg-muted/30">
-                      <TableCell className="text-center">
-                        <button onClick={() => handleToggleSelect(item.id)} className="cursor-pointer">
-                          {isSelected ? (
-                            <CheckSquare className="size-4 text-primary" />
-                          ) : (
-                            <Square className="size-4 text-muted-foreground" />
-                          )}
-                        </button>
-                      </TableCell>
-                      <TableCell className="font-mono text-xs font-semibold text-foreground">
-                        {item.reference || item.sku}
-                      </TableCell>
-                      <TableCell className="text-xs font-medium text-foreground max-w-xs truncate">
-                        {item.title}
-                      </TableCell>
-                      <TableCell className="text-center font-mono text-xs text-muted-foreground">
-                        {item.variationsCount || 1}
-                      </TableCell>
-                      <TableCell className="text-right font-mono text-xs font-semibold text-foreground">
-                        {formatCurrency(item.price)}
-                      </TableCell>
-                      <TableCell className="text-center font-mono text-xs text-foreground">
-                        {formatNumber(item.stock)} un
-                      </TableCell>
-                      <TableCell>
-                        <Badge variant="outline" className="text-[10px]">
-                          {item.dispatchTarget || "Shopify"}
-                        </Badge>
-                      </TableCell>
-                      <TableCell>
-                        <Badge
-                          variant={
-                            item.statusLabel === "Aprovado" || item.statusLabel === "Despachado"
-                              ? "success"
-                              : item.statusLabel === "Pendente" || item.requiresReview
-                              ? "warning"
-                              : item.statusLabel === "Erro" || item.statusLabel === "Rejeitado"
-                              ? "destructive"
-                              : "secondary"
-                          }
-                          className="text-[10px]"
-                        >
-                          {item.statusLabel}
-                        </Badge>
-                      </TableCell>
-                      <TableCell className="text-right">
-                        <Button
-                          variant="ghost"
-                          size="sm"
-                          onClick={() => {
-                            setInspectedItem(item);
-                            setInspectTab("diff");
-                          }}
-                          className="h-7 text-xs gap-1"
-                        >
-                          <Eye className="size-3.5" />
-                          Inspecionar
-                        </Button>
-                      </TableCell>
-                    </TableRow>
+                    <Fragment key={group.reference}>
+                      <TableRow className="hover:bg-muted/30">
+                        <TableCell className="text-center">
+                          <button onClick={() => handleToggleSelect(rep.id)} className="cursor-pointer">
+                            {isSelected ? (
+                              <CheckSquare className="size-4 text-primary" />
+                            ) : (
+                              <Square className="size-4 text-muted-foreground" />
+                            )}
+                          </button>
+                        </TableCell>
+                        <TableCell className="font-mono text-xs font-semibold text-foreground">
+                          <div className="flex items-center gap-1.5">
+                            {hasMultipleVariations ? (
+                              <button
+                                type="button"
+                                onClick={() => toggleExpanded(group.reference)}
+                                className="p-0.5 rounded hover:bg-muted/60 text-muted-foreground hover:text-foreground cursor-pointer transition-colors"
+                              >
+                                <ChevronRight className={cn("size-4 transition-transform duration-200", isExpanded && "rotate-90")} />
+                              </button>
+                            ) : (
+                              <span className="w-5" />
+                            )}
+                            <span>{group.reference}</span>
+                          </div>
+                        </TableCell>
+                        <TableCell className="text-xs font-medium text-foreground max-w-xs truncate">
+                          {rep.title}
+                        </TableCell>
+                        <TableCell className="text-center font-mono text-xs text-foreground font-semibold">
+                          {group.variations.length}
+                        </TableCell>
+                        <TableCell>
+                          <Badge variant="outline" className="text-[10px]">
+                            {rep.dispatchTarget || "Shopify"}
+                          </Badge>
+                        </TableCell>
+                        <TableCell>
+                          <StatusBadge tone={getBatchStatusTone(rep.statusLabel)}>
+                            {rep.statusLabel}
+                          </StatusBadge>
+                        </TableCell>
+                        <TableCell className="text-xs text-muted-foreground">
+                          {rep.reviewLabel || (rep.requiresReview ? "Manual" : "Automática")}
+                        </TableCell>
+                        <TableCell className="text-xs text-muted-foreground whitespace-nowrap">
+                          {formatDateTime(rep.createdAtUtc)}
+                        </TableCell>
+                        <TableCell className="text-right">
+                          <Button
+                            variant="ghost"
+                            size="sm"
+                            onClick={() => {
+                              setInspectedItem(rep);
+                              setInspectTab("diff");
+                            }}
+                            className="h-7 text-xs gap-1"
+                          >
+                            <Eye className="size-3.5" />
+                            Inspecionar
+                          </Button>
+                        </TableCell>
+                      </TableRow>
+
+                      {/* Expanded Variations Sub-table */}
+                      {hasMultipleVariations && isExpanded && (
+                        <TableRow className="hover:bg-transparent border-t-0">
+                          <TableCell colSpan={9} className="p-0">
+                            <div className="bg-muted/20 border-y border-border/70 px-4 py-3 pl-12">
+                              <Table>
+                                <TableHeader>
+                                  <TableRow className="hover:bg-transparent border-b border-border/40">
+                                    <TableHead className="text-xs font-semibold">SKU</TableHead>
+                                    <TableHead className="text-xs font-semibold">Variação</TableHead>
+                                    <TableHead className="text-xs font-semibold">Destinos</TableHead>
+                                    <TableHead className="text-xs font-semibold">Status</TableHead>
+                                    <TableHead className="text-xs font-semibold">Revisão</TableHead>
+                                    <TableHead className="text-xs font-semibold">Criado em</TableHead>
+                                    <TableHead className="text-right text-xs font-semibold"></TableHead>
+                                  </TableRow>
+                                </TableHeader>
+                                <TableBody>
+                                  {group.variations.map((v, vIdx) => (
+                                    <TableRow key={vIdx} className="hover:bg-muted/40 border-b border-border/20">
+                                      <TableCell className="font-mono text-xs font-medium text-foreground">
+                                        {v.sku}
+                                      </TableCell>
+                                      <TableCell className="text-xs font-semibold text-foreground">
+                                        {v.variationName}
+                                      </TableCell>
+                                      <TableCell>
+                                        <Badge variant="outline" className="text-[10px]">
+                                          {v.dispatchTargets?.join(", ") || rep.dispatchTarget || "Shopify"}
+                                        </Badge>
+                                      </TableCell>
+                                      <TableCell>
+                                        <StatusBadge tone={getBatchStatusTone(v.statusLabel || rep.statusLabel)}>
+                                          {v.statusLabel || rep.statusLabel}
+                                        </StatusBadge>
+                                      </TableCell>
+                                      <TableCell className="text-xs text-muted-foreground">
+                                        {v.reviewLabel || rep.reviewLabel || "Automática"}
+                                      </TableCell>
+                                      <TableCell className="text-xs text-muted-foreground whitespace-nowrap">
+                                        {formatDateTime(v.createdAtUtc || rep.createdAtUtc)}
+                                      </TableCell>
+                                      <TableCell className="text-right">
+                                        <Button
+                                          variant="ghost"
+                                          size="sm"
+                                          onClick={() => {
+                                            setInspectedItem(rep);
+                                            setInspectTab("diff");
+                                          }}
+                                          className="h-6 text-xs text-muted-foreground hover:text-foreground"
+                                        >
+                                          Detalhes
+                                        </Button>
+                                      </TableCell>
+                                    </TableRow>
+                                  ))}
+                                </TableBody>
+                              </Table>
+                            </div>
+                          </TableCell>
+                        </TableRow>
+                      )}
+                    </Fragment>
                   );
                 })}
               </TableBody>
@@ -475,9 +601,9 @@ export function ProductImportBatchPage() {
         {filteredItems.length > 0 && (
           <CardFooter className="p-3 border-t border-border/80 text-xs text-muted-foreground flex justify-between">
             <span>
-              Mostrando 1-{filteredItems.length} de {filteredItems.length} referência(s)
+              Mostrando 1-{groupedItems.length} de {groupedItems.length} referência(s) filtradas
             </span>
-            <span>{selectedIds.length} selecionado(s)</span>
+            <span>{selectedIds.length} selecionado(s) entre todas as referências filtradas</span>
           </CardFooter>
         )}
       </Card>
