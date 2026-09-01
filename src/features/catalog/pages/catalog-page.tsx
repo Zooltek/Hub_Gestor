@@ -37,12 +37,17 @@ import {
   DialogDescription,
   DialogFooter,
 } from "@/components/ui/dialog";
+import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { useAuth } from "@/app/providers/auth-provider";
 import {
   fetchProductCatalog,
   saveCatalogItem,
   bulkEditCatalog,
   createProductBatchFromCatalog,
+  fetchCustomerPlugins,
+  fetchMarketplaceRemoteCategories,
+  type CustomerPluginDto,
+  type RemoteCategoryDto,
 } from "@/lib/api/hub-client";
 import type { CatalogItemDto, CatalogItemVariationDto } from "@/lib/api/types";
 import { formatCurrency, formatDateTime, formatNumber } from "@/lib/utils";
@@ -92,12 +97,35 @@ export function CatalogPage() {
   const [isBulkEditOpen, setIsBulkEditOpen] = useState(false);
   const [bulkPriceAdjustment, setBulkPriceAdjustment] = useState("");
 
+  // Marketplace states (Mercado Livre, Shopee, etc.)
+  const [customerPlugins, setCustomerPlugins] = useState<CustomerPluginDto[]>([]);
+  const [editMlbCategory, setEditMlbCategory] = useState("MLB109313");
+  const [editMlbCategoryName, setEditMlbCategoryName] = useState("Vestidos");
+  const [editMlbListingType, setEditMlbListingType] = useState("gold_special");
+  const [editMlbCondition, setEditMlbCondition] = useState("new");
+  const [editMlbWarranty, setEditMlbWarranty] = useState("Garantia do vendedor (30 dias)");
+  const [editMlbSizeGridId, setEditMlbSizeGridId] = useState("");
+  const [editMlbBrand, setEditMlbBrand] = useState("");
+  const [searchingProductMlb, setSearchingProductMlb] = useState(false);
+  const [mlbSuggestions, setMlbSuggestions] = useState<RemoteCategoryDto[]>([]);
+
+  const hasMercadoLivre = useMemo(() => {
+    return (
+      customerPlugins.some((p) => p.systemName.toLowerCase().includes("mercadolivre")) ||
+      editDispatchTargets.some((t) => t.toLowerCase().includes("mercadolivre") || t.toLowerCase().includes("mercado livre"))
+    );
+  }, [customerPlugins, editDispatchTargets]);
+
   const loadCatalog = async (showToast = false) => {
     if (!user?.customerId) return;
     setIsLoading(true);
     try {
-      const data = await fetchProductCatalog(user.customerId, searchTerm);
+      const [data, plugData] = await Promise.all([
+        fetchProductCatalog(user.customerId, searchTerm),
+        fetchCustomerPlugins(user.customerId).catch(() => []),
+      ]);
       setCatalog(data || []);
+      setCustomerPlugins(plugData || []);
       if (showToast) {
         toast.success(`Catálogo atualizado! (${data?.length || 0} produtos encontrados)`);
       }
@@ -620,256 +648,408 @@ export function CatalogPage() {
               </DialogDescription>
             </DialogHeader>
 
-            <div className="flex-1 overflow-y-auto pr-1 flex flex-col gap-4 py-2 text-xs">
-              {/* Row 1: Referência (Readonly) & Nome do Produto */}
-              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-                <div>
-                  <label className="font-semibold text-foreground">Referência</label>
-                  <Input
-                    disabled
-                    value={editingItem.reference || editingItem.sku}
-                    className="mt-1 text-xs bg-muted/40 cursor-not-allowed text-muted-foreground font-mono"
-                  />
-                </div>
-                <div>
-                  <label className="font-semibold text-foreground">Nome do produto</label>
-                  <Input
-                    value={editTitle}
-                    onChange={(e) => setEditTitle(e.target.value)}
-                    className="mt-1 text-xs"
-                  />
-                </div>
-              </div>
-
-              {/* Row 2: Descrição */}
-              <div>
-                <label className="font-semibold text-foreground">Descrição</label>
-                <textarea
-                  value={editDescription}
-                  onChange={(e: React.ChangeEvent<HTMLTextAreaElement>) => setEditDescription(e.target.value)}
-                  rows={3}
-                  className="flex min-h-[80px] w-full rounded-md border border-input bg-background px-3 py-2 text-xs ring-offset-background placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring focus-visible:ring-offset-1 disabled:cursor-not-allowed disabled:opacity-50 mt-1"
-                  placeholder="Descrição do produto para os marketplaces..."
-                />
-              </div>
-
-              {/* Row 3: Categoria & Marca */}
-              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-                <div>
-                  <label className="font-semibold text-foreground">Categoria</label>
-                  <Input
-                    value={editCategory}
-                    onChange={(e) => setEditCategory(e.target.value)}
-                    className="mt-1 text-xs"
-                  />
-                </div>
-                <div>
-                  <label className="font-semibold text-foreground">Marca</label>
-                  <Input
-                    value={editBrand}
-                    onChange={(e) => setEditBrand(e.target.value)}
-                    className="mt-1 text-xs"
-                  />
-                </div>
-              </div>
-
-              {/* Row 4: Codificação do Fabricante & Preço de custo (Readonly) */}
-              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-                <div>
-                  <label className="font-semibold text-foreground">Codificação do fabricante</label>
-                  <Input
-                    value={editManufacturerCode}
-                    onChange={(e) => setEditManufacturerCode(e.target.value)}
-                    className="mt-1 text-xs"
-                  />
-                </div>
-                <div>
-                  <label className="font-semibold text-foreground">Preço de custo (Sincronizado do ERP)</label>
-                  <Input
-                    disabled
-                    value={formatCurrency(editCostPrice)}
-                    className="mt-1 text-xs bg-muted/40 cursor-not-allowed text-muted-foreground font-mono"
-                  />
-                </div>
-              </div>
-
-              {/* Row 5: Preço de venda (Readonly - Definido na esteira/ERP) */}
-              <div>
-                <label className="font-semibold text-foreground">Preço de venda (Sincronizado do ERP)</label>
-                <Input
-                  disabled
-                  value={formatCurrency(editPrice)}
-                  className="mt-1 text-xs bg-muted/40 cursor-not-allowed text-muted-foreground font-mono"
-                />
-              </div>
-
-              {/* Row 6: Produto Ativo Checkbox Card */}
-              <div className="flex items-start gap-3 rounded-xl border border-primary/20 bg-primary/5 p-3.5">
-                <input
-                  type="checkbox"
-                  id="product-active"
-                  checked={editIsActive}
-                  onChange={(e) => setEditIsActive(e.target.checked)}
-                  className="mt-0.5 size-4 rounded border-border text-primary focus:ring-primary cursor-pointer"
-                />
-                <div>
-                  <label htmlFor="product-active" className="font-bold text-foreground cursor-pointer">
-                    Produto ativo
-                  </label>
-                  <p className="text-[11px] text-muted-foreground mt-0.5">
-                    Desative para bloquear o envio deste produto aos plugins.
-                  </p>
-                </div>
-              </div>
-
-              {/* Row 7: Destinos do Envio */}
-              <div>
-                <label className="font-semibold text-foreground">Destinos do envio</label>
-                <Input
-                  value={editDispatchTargets.join(", ")}
-                  onChange={(e: React.ChangeEvent<HTMLInputElement>) =>
-                    setEditDispatchTargets(
-                      e.target.value.split(",").map((s) => s.trim()).filter(Boolean)
-                    )
-                  }
-                  placeholder="Ex: Shopify, Mercado Livre"
-                  className="mt-1 text-xs"
-                />
-              </div>
-
-              {/* Row 8: Imagens */}
-              <Card className="border-border/80">
-                <CardHeader className="p-3 pb-2 flex flex-row items-center justify-between">
-                  <div>
-                    <CardTitle className="text-xs font-bold flex items-center gap-1.5">
-                      <ImageIcon className="size-3.5 text-primary" />
-                      Imagens
-                    </CardTitle>
-                    <CardDescription className="text-[11px]">
-                      URLs públicas usadas no marketplace.
-                    </CardDescription>
-                  </div>
-                  <Button
-                    type="button"
-                    variant="outline"
-                    size="sm"
-                    onClick={() => setIsAddingImage(true)}
-                    className="h-7 text-[11px] gap-1"
+            <Tabs defaultValue="basic" className="flex-1 flex flex-col overflow-hidden">
+              <div className="border-b border-border px-1">
+                <TabsList className="bg-transparent h-9 p-0 gap-4">
+                  <TabsTrigger
+                    value="basic"
+                    className="data-[state=active]:bg-transparent data-[state=active]:shadow-none data-[state=active]:border-b-2 data-[state=active]:border-primary rounded-none px-2 text-xs font-semibold"
                   >
-                    <Plus className="size-3" />
-                    Adicionar imagem
-                  </Button>
-                </CardHeader>
-                <CardContent className="p-3 pt-0">
-                  {isAddingImage && (
-                    <div className="flex items-center gap-2 mb-2">
+                    Dados básicos
+                  </TabsTrigger>
+
+                  {hasMercadoLivre && (
+                    <TabsTrigger
+                      value="mercadolivre"
+                      className="data-[state=active]:bg-transparent data-[state=active]:shadow-none data-[state=active]:border-b-2 data-[state=active]:border-primary rounded-none px-2 text-xs font-semibold flex items-center gap-1.5"
+                    >
+                      <span className="size-2 rounded-full bg-amber-400" />
+                      Mercado Livre
+                    </TabsTrigger>
+                  )}
+                </TabsList>
+              </div>
+
+              {/* ABA 1: DADOS BÁSICOS */}
+              <TabsContent value="basic" className="flex-1 overflow-y-auto pr-1 flex flex-col gap-4 py-3 text-xs mt-0">
+                {/* Row 1: Referência (Readonly) & Nome do Produto */}
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                  <div>
+                    <label className="font-semibold text-foreground">Referência</label>
+                    <Input
+                      disabled
+                      value={editingItem.reference || editingItem.sku}
+                      className="mt-1 text-xs bg-muted/40 cursor-not-allowed text-muted-foreground font-mono"
+                    />
+                  </div>
+                  <div>
+                    <label className="font-semibold text-foreground">Nome do produto</label>
+                    <Input
+                      value={editTitle}
+                      onChange={(e) => setEditTitle(e.target.value)}
+                      className="mt-1 text-xs"
+                    />
+                  </div>
+                </div>
+
+                {/* Row 2: Descrição */}
+                <div>
+                  <label className="font-semibold text-foreground">Descrição</label>
+                  <textarea
+                    value={editDescription}
+                    onChange={(e: React.ChangeEvent<HTMLTextAreaElement>) => setEditDescription(e.target.value)}
+                    rows={3}
+                    className="flex min-h-[80px] w-full rounded-md border border-input bg-background px-3 py-2 text-xs ring-offset-background placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring focus-visible:ring-offset-1 disabled:cursor-not-allowed disabled:opacity-50 mt-1"
+                    placeholder="Descrição do produto para os marketplaces..."
+                  />
+                </div>
+
+                {/* Row 3: Categoria & Marca */}
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                  <div>
+                    <label className="font-semibold text-foreground">Categoria</label>
+                    <Input
+                      value={editCategory}
+                      onChange={(e) => setEditCategory(e.target.value)}
+                      className="mt-1 text-xs"
+                    />
+                  </div>
+                  <div>
+                    <label className="font-semibold text-foreground">Marca</label>
+                    <Input
+                      value={editBrand}
+                      onChange={(e) => setEditBrand(e.target.value)}
+                      className="mt-1 text-xs"
+                    />
+                  </div>
+                </div>
+
+                {/* Row 4: Codificação do Fabricante & Preço de custo (Readonly) */}
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                  <div>
+                    <label className="font-semibold text-foreground">Codificação do fabricante</label>
+                    <Input
+                      value={editManufacturerCode}
+                      onChange={(e) => setEditManufacturerCode(e.target.value)}
+                      className="mt-1 text-xs"
+                    />
+                  </div>
+                  <div>
+                    <label className="font-semibold text-foreground">Preço de custo (Sincronizado do ERP)</label>
+                    <Input
+                      disabled
+                      value={formatCurrency(editCostPrice)}
+                      className="mt-1 text-xs bg-muted/40 cursor-not-allowed text-muted-foreground font-mono"
+                    />
+                  </div>
+                </div>
+
+                {/* Row 5: Preço de venda (Readonly - Definido na esteira/ERP) */}
+                <div>
+                  <label className="font-semibold text-foreground">Preço de venda (Sincronizado do ERP)</label>
+                  <Input
+                    disabled
+                    value={formatCurrency(editPrice)}
+                    className="mt-1 text-xs bg-muted/40 cursor-not-allowed text-muted-foreground font-mono"
+                  />
+                </div>
+
+                {/* Row 6: Produto Ativo Checkbox Card */}
+                <div className="flex items-start gap-3 rounded-xl border border-primary/20 bg-primary/5 p-3.5">
+                  <input
+                    type="checkbox"
+                    id="product-active"
+                    checked={editIsActive}
+                    onChange={(e) => setEditIsActive(e.target.checked)}
+                    className="mt-0.5 size-4 rounded border-border text-primary focus:ring-primary cursor-pointer"
+                  />
+                  <div>
+                    <label htmlFor="product-active" className="font-bold text-foreground cursor-pointer">
+                      Produto ativo
+                    </label>
+                    <p className="text-[11px] text-muted-foreground mt-0.5">
+                      Desative para bloquear o envio deste produto aos plugins.
+                    </p>
+                  </div>
+                </div>
+
+                {/* Row 7: Destinos do Envio */}
+                <div>
+                  <label className="font-semibold text-foreground">Destinos do envio</label>
+                  <Input
+                    value={editDispatchTargets.join(", ")}
+                    onChange={(e: React.ChangeEvent<HTMLInputElement>) =>
+                      setEditDispatchTargets(
+                        e.target.value.split(",").map((s) => s.trim()).filter(Boolean)
+                      )
+                    }
+                    placeholder="Ex: Shopify, Mercado Livre"
+                    className="mt-1 text-xs"
+                  />
+                </div>
+
+                {/* Row 8: Imagens */}
+                <Card className="border-border/80">
+                  <CardHeader className="p-3 pb-2 flex flex-row items-center justify-between">
+                    <div>
+                      <CardTitle className="text-xs font-bold flex items-center gap-1.5">
+                        <ImageIcon className="size-3.5 text-primary" />
+                        Imagens
+                      </CardTitle>
+                      <CardDescription className="text-[11px]">
+                        URLs públicas usadas no marketplace.
+                      </CardDescription>
+                    </div>
+                    <Button
+                      type="button"
+                      variant="outline"
+                      size="sm"
+                      onClick={() => setIsAddingImage(true)}
+                      className="h-7 text-[11px] gap-1"
+                    >
+                      <Plus className="size-3" />
+                      Adicionar imagem
+                    </Button>
+                  </CardHeader>
+                  <CardContent className="p-3 pt-0">
+                    {isAddingImage && (
+                      <div className="flex items-center gap-2 mb-2">
+                        <Input
+                          placeholder="https://exemplo.com/imagem.jpg"
+                          value={newImageUrl}
+                          onChange={(e) => setNewImageUrl(e.target.value)}
+                          className="text-xs h-8"
+                        />
+                        <Button size="sm" onClick={handleAddImage} className="h-8 text-xs">
+                          OK
+                        </Button>
+                        <Button
+                          variant="ghost"
+                          size="sm"
+                          onClick={() => {
+                            setIsAddingImage(false);
+                            setNewImageUrl("");
+                          }}
+                          className="h-8 text-xs"
+                        >
+                          Cancelar
+                        </Button>
+                      </div>
+                    )}
+
+                    {editImages.length === 0 ? (
+                      <p className="text-[11px] text-muted-foreground py-1">
+                        Nenhuma imagem configurada.
+                      </p>
+                    ) : (
+                      <div className="flex flex-col gap-1.5">
+                        {editImages.map((img, idx) => (
+                          <div
+                            key={idx}
+                            className="flex items-center justify-between p-2 rounded bg-muted/30 border border-border/60 text-xs font-mono"
+                          >
+                            <span className="truncate max-w-md">{img}</span>
+                            <Button
+                              variant="ghost"
+                              size="icon"
+                              onClick={() => handleRemoveImage(idx)}
+                              className="size-6 text-destructive hover:bg-destructive/10"
+                            >
+                              <Trash2 className="size-3" />
+                            </Button>
+                          </div>
+                        ))}
+                      </div>
+                    )}
+                  </CardContent>
+                </Card>
+
+                {/* Row 9: Variações (Readonly Estoque) */}
+                <div>
+                  <div className="flex items-center justify-between mb-2">
+                    <span className="font-bold text-foreground text-sm">Variações</span>
+                    <span className="text-xs text-muted-foreground font-mono">
+                      {editVariations.length} SKU(s)
+                    </span>
+                  </div>
+
+                  <div className="border border-border/80 rounded-lg overflow-hidden">
+                    <Table>
+                      <TableHeader>
+                        <TableRow>
+                          <TableHead className="text-xs">SKU</TableHead>
+                          <TableHead className="text-xs">Variação</TableHead>
+                          <TableHead className="text-xs">Código de barras</TableHead>
+                          <TableHead className="text-center text-xs">Estoque</TableHead>
+                          <TableHead className="text-right text-xs"></TableHead>
+                        </TableRow>
+                      </TableHeader>
+                      <TableBody>
+                        {editVariations.map((v, i) => (
+                          <TableRow key={i} className="hover:bg-muted/30">
+                            <TableCell className="font-mono text-xs font-semibold text-foreground">
+                              {v.sku}
+                            </TableCell>
+                            <TableCell className="text-xs font-medium text-foreground">
+                              {v.color && v.size
+                                ? `${v.color} - ${v.size}`
+                                : v.size && v.colorCode
+                                ? `${v.size} - ${v.colorCode}`
+                                : v.variationName || "-"}
+                            </TableCell>
+                            <TableCell className="font-mono text-xs text-muted-foreground">
+                              {v.barcode || "-"}
+                            </TableCell>
+                            <TableCell className="text-center font-mono text-xs font-semibold text-foreground">
+                              {formatNumber(v.stock)}
+                            </TableCell>
+                            <TableCell className="text-right">
+                              <Button
+                                type="button"
+                                variant="ghost"
+                                size="sm"
+                                onClick={() => handleOpenEditVariation(v)}
+                                className="h-7 text-xs font-medium text-primary hover:text-primary hover:bg-primary/10"
+                              >
+                                Editar
+                              </Button>
+                            </TableCell>
+                          </TableRow>
+                        ))}
+                      </TableBody>
+                    </Table>
+                  </div>
+                </div>
+              </TabsContent>
+
+              {/* ABA 2: MERCADO LIVRE */}
+              {hasMercadoLivre && (
+                <TabsContent value="mercadolivre" className="flex-1 overflow-y-auto pr-1 flex flex-col gap-4 py-3 text-xs mt-0">
+                  <div className="p-3 rounded-xl border border-amber-500/20 bg-amber-500/5 flex items-start gap-2.5">
+                    <span className="size-2 rounded-full bg-amber-500 mt-1.5" />
+                    <div>
+                      <span className="font-bold text-foreground">Configurações do Mercado Livre</span>
+                      <p className="text-[11px] text-muted-foreground mt-0.5">
+                        Defina a categoria oficial MLB e atributos específicos para publicação direta no Mercado Livre.
+                      </p>
+                    </div>
+                  </div>
+
+                  {/* Categoria Mercado Livre */}
+                  <div>
+                    <label className="font-semibold text-foreground">Categoria no Mercado Livre (MLB)</label>
+                    <div className="flex gap-2 mt-1">
                       <Input
-                        placeholder="https://exemplo.com/imagem.jpg"
-                        value={newImageUrl}
-                        onChange={(e) => setNewImageUrl(e.target.value)}
-                        className="text-xs h-8"
+                        value={editMlbCategoryName ? `${editMlbCategoryName} (${editMlbCategory})` : editMlbCategory}
+                        onChange={(e) => {
+                          setEditMlbCategory(e.target.value);
+                          setSearchingProductMlb(true);
+                          fetchMarketplaceRemoteCategories(user?.customerId || "", "Marketplace.MercadoLivre", e.target.value)
+                            .then(setMlbSuggestions);
+                        }}
+                        placeholder="Ex: Vestidos, Blusas..."
+                        className="text-xs"
                       />
-                      <Button size="sm" onClick={handleAddImage} className="h-8 text-xs">
-                        OK
-                      </Button>
                       <Button
-                        variant="ghost"
+                        type="button"
+                        variant="outline"
                         size="sm"
                         onClick={() => {
-                          setIsAddingImage(false);
-                          setNewImageUrl("");
+                          setSearchingProductMlb(!searchingProductMlb);
+                          fetchMarketplaceRemoteCategories(user?.customerId || "", "Marketplace.MercadoLivre", editCategory)
+                            .then(setMlbSuggestions);
                         }}
-                        className="h-8 text-xs"
+                        className="text-xs"
                       >
-                        Cancelar
+                        Sugerir
                       </Button>
                     </div>
-                  )}
 
-                  {editImages.length === 0 ? (
-                    <p className="text-[11px] text-muted-foreground py-1">
-                      Nenhuma imagem configurada.
-                    </p>
-                  ) : (
-                    <div className="flex flex-col gap-1.5">
-                      {editImages.map((img, idx) => (
-                        <div
-                          key={idx}
-                          className="flex items-center justify-between p-2 rounded bg-muted/30 border border-border/60 text-xs font-mono"
-                        >
-                          <span className="truncate max-w-md">{img}</span>
-                          <Button
-                            variant="ghost"
-                            size="icon"
-                            onClick={() => handleRemoveImage(idx)}
-                            className="size-6 text-destructive hover:bg-destructive/10"
+                    {searchingProductMlb && mlbSuggestions.length > 0 && (
+                      <div className="mt-1 border border-border rounded-lg bg-card shadow-md max-h-40 overflow-y-auto divide-y divide-border/60">
+                        {mlbSuggestions.map((cat) => (
+                          <button
+                            key={cat.id}
+                            type="button"
+                            onClick={() => {
+                              setEditMlbCategory(cat.id);
+                              setEditMlbCategoryName(cat.name);
+                              setSearchingProductMlb(false);
+                            }}
+                            className="w-full text-left p-2 hover:bg-primary/10 text-xs flex flex-col gap-0.5 cursor-pointer"
                           >
-                            <Trash2 className="size-3" />
-                          </Button>
-                        </div>
-                      ))}
+                            <span className="font-bold text-foreground">{cat.name} ({cat.id})</span>
+                            <span className="text-[10px] text-muted-foreground">{cat.pathFromRoot}</span>
+                          </button>
+                        ))}
+                      </div>
+                    )}
+                  </div>
+
+                  {/* Tipo de Publicação & Condição */}
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                    <div>
+                      <label className="font-semibold text-foreground">Tipo de Publicação</label>
+                      <select
+                        value={editMlbListingType}
+                        onChange={(e) => setEditMlbListingType(e.target.value)}
+                        className="flex h-9 w-full rounded-md border border-input bg-background px-3 py-1 text-xs ring-offset-background focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring focus-visible:ring-offset-1 mt-1"
+                      >
+                        <option value="gold_special">Clássico (gold_special) - Menor comissão</option>
+                        <option value="gold_pro">Premium (gold_pro) - Parcelamento sem juros</option>
+                      </select>
                     </div>
-                  )}
-                </CardContent>
-              </Card>
 
-              {/* Row 9: Variações (Readonly Estoque) */}
-              <div>
-                <div className="flex items-center justify-between mb-2">
-                  <span className="font-bold text-foreground text-sm">Variações</span>
-                  <span className="text-xs text-muted-foreground font-mono">
-                    {editVariations.length} SKU(s)
-                  </span>
-                </div>
+                    <div>
+                      <label className="font-semibold text-foreground">Condição</label>
+                      <select
+                        value={editMlbCondition}
+                        onChange={(e) => setEditMlbCondition(e.target.value)}
+                        className="flex h-9 w-full rounded-md border border-input bg-background px-3 py-1 text-xs ring-offset-background focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring focus-visible:ring-offset-1 mt-1"
+                      >
+                        <option value="new">Novo</option>
+                        <option value="used">Usado</option>
+                        <option value="reconditioned">Recondicionado</option>
+                      </select>
+                    </div>
+                  </div>
 
-                <div className="border border-border/80 rounded-lg overflow-hidden">
-                  <Table>
-                    <TableHeader>
-                      <TableRow>
-                        <TableHead className="text-xs">SKU</TableHead>
-                        <TableHead className="text-xs">Variação</TableHead>
-                        <TableHead className="text-xs">Código de barras</TableHead>
-                        <TableHead className="text-center text-xs">Estoque</TableHead>
-                        <TableHead className="text-right text-xs"></TableHead>
-                      </TableRow>
-                    </TableHeader>
-                    <TableBody>
-                      {editVariations.map((v, i) => (
-                        <TableRow key={i} className="hover:bg-muted/30">
-                          <TableCell className="font-mono text-xs font-semibold text-foreground">
-                            {v.sku}
-                          </TableCell>
-                          <TableCell className="text-xs font-medium text-foreground">
-                            {v.color && v.size
-                              ? `${v.color} - ${v.size}`
-                              : v.size && v.colorCode
-                              ? `${v.size} - ${v.colorCode}`
-                              : v.variationName || "-"}
-                          </TableCell>
-                          <TableCell className="font-mono text-xs text-muted-foreground">
-                            {v.barcode || "-"}
-                          </TableCell>
-                          <TableCell className="text-center font-mono text-xs font-semibold text-foreground">
-                            {formatNumber(v.stock)}
-                          </TableCell>
-                          <TableCell className="text-right">
-                            <Button
-                              type="button"
-                              variant="ghost"
-                              size="sm"
-                              onClick={() => handleOpenEditVariation(v)}
-                              className="h-7 text-xs font-medium text-primary hover:text-primary hover:bg-primary/10"
-                            >
-                              Editar
-                            </Button>
-                          </TableCell>
-                        </TableRow>
-                      ))}
-                    </TableBody>
-                  </Table>
-                </div>
-              </div>
-            </div>
+                  {/* Garantia & Tabela de Medidas */}
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                    <div>
+                      <label className="font-semibold text-foreground">Garantia</label>
+                      <Input
+                        value={editMlbWarranty}
+                        onChange={(e) => setEditMlbWarranty(e.target.value)}
+                        placeholder="Ex: Garantia do vendedor (30 dias)"
+                        className="mt-1 text-xs"
+                      />
+                    </div>
+
+                    <div>
+                      <label className="font-semibold text-foreground">Guia de Tamanhos (SIZE_GRID_ID)</label>
+                      <Input
+                        value={editMlbSizeGridId}
+                        onChange={(e) => setEditMlbSizeGridId(e.target.value)}
+                        placeholder="Ex: ID da tabela de medidas no ML"
+                        className="mt-1 text-xs font-mono"
+                      />
+                    </div>
+                  </div>
+
+                  {/* Marca no Mercado Livre */}
+                  <div>
+                    <label className="font-semibold text-foreground">Marca no Mercado Livre</label>
+                    <Input
+                      value={editMlbBrand || editBrand}
+                      onChange={(e) => setEditMlbBrand(e.target.value)}
+                      placeholder="Nome da marca oficial"
+                      className="mt-1 text-xs"
+                    />
+                  </div>
+                </TabsContent>
+              )}
+            </Tabs>
 
             <DialogFooter className="gap-2 sm:justify-end border-t border-border pt-3">
               <Button variant="outline" size="sm" onClick={() => setEditingItem(null)}>

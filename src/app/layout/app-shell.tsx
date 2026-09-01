@@ -11,6 +11,7 @@ const ROUTE_LABELS: Record<string, string> = {
   pedidos: "Pedidos",
   "lotes-produtos": "Lotes de Produtos",
   catalogo: "Catálogo & Estoque",
+  "mapeamento-marketplaces": "Mapeamento de Marketplaces",
   "conexoes-erp": "Conexão ERP Online",
   saude: "Saúde & Conexões",
   equipe: "Equipe e Usuários",

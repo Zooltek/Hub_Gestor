@@ -10,6 +10,7 @@ import {
   Building2,
   Plug,
   ShieldCheck,
+  Store,
   X,
 } from "lucide-react";
 import { useAuth } from "@/app/providers/auth-provider";
@@ -35,6 +36,11 @@ const navItems = [
     title: "Catálogo & Estoque",
     href: "/catalogo",
     icon: Package,
+  },
+  {
+    title: "Mapeamento Canais",
+    href: "/mapeamento-marketplaces",
+    icon: Store,
   },
   {
     title: "Conexão ERP Online",

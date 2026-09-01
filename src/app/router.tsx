@@ -7,6 +7,7 @@ import { OrdersPage } from "@/features/orders/pages/orders-page";
 import { ProductsPipelinePage } from "@/features/products-pipeline/pages/products-pipeline-page";
 import { ProductImportBatchPage } from "@/features/products-pipeline/pages/product-import-batch-page";
 import { CatalogPage } from "@/features/catalog/pages/catalog-page";
+import { MarketplaceMappingPage } from "@/features/marketplace-mapping/pages/marketplace-mapping-page";
 import { ErpConnectionsPage } from "@/features/erp-connections/pages/erp-connections-page";
 import { HealthPage } from "@/features/health/pages/health-page";
 import { TeamPage } from "@/features/team/pages/team-page";
@@ -41,6 +42,10 @@ export const router = createBrowserRouter([
           {
             path: "/catalogo",
             element: <CatalogPage />,
+          },
+          {
+            path: "/mapeamento-marketplaces",
+            element: <MarketplaceMappingPage />,
           },
           {
             path: "/conexoes-erp",
