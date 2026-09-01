@@ -13,11 +13,19 @@ import {
   ArrowRight,
   Database,
   Lock,
+  Boxes,
+  Store,
+  Layers,
+  Power,
+  Trash2,
+  ExternalLink,
+  Search,
 } from "lucide-react";
-import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
+import { Card, CardContent, CardHeader, CardTitle, CardDescription, CardFooter } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Badge } from "@/components/ui/badge";
+import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import {
   Dialog,
   DialogContent,
@@ -27,7 +35,16 @@ import {
   DialogFooter,
 } from "@/components/ui/dialog";
 import { useAuth } from "@/app/providers/auth-provider";
-import { fetchProductCatalog, fetchCustomerOrders, checkHubHealth } from "@/lib/api/hub-client";
+import {
+  fetchProductCatalog,
+  fetchCustomerOrders,
+  checkHubHealth,
+  fetchHubAvailablePlugins,
+  installOrUpdateCustomerPlugin,
+  toggleCustomerPluginStatus,
+  uninstallCustomerPlugin,
+  type HubPluginDto,
+} from "@/lib/api/hub-client";
 import { toast } from "sonner";
 
 export interface ErpProvider {
@@ -189,6 +206,31 @@ export function ErpConnectionsPage() {
   const [isTesting, setIsTesting] = useState(false);
   const [formFields, setFormFields] = useState<Record<string, string>>({});
 
+  // Hub Admin Plugins State
+  const [hubPlugins, setHubPlugins] = useState<HubPluginDto[]>([]);
+  const [isLoadingPlugins, setIsLoadingPlugins] = useState(false);
+  const [pluginSearch, setPluginSearch] = useState("");
+  const [activePluginModal, setActivePluginModal] = useState<HubPluginDto | null>(null);
+  const [pluginFormValues, setPluginFormValues] = useState<Record<string, any>>({});
+  const [isSavingPlugin, setIsSavingPlugin] = useState(false);
+
+  const loadPlugins = async () => {
+    if (!user?.customerId) return;
+    setIsLoadingPlugins(true);
+    try {
+      const data = await fetchHubAvailablePlugins(user.customerId);
+      setHubPlugins(data);
+    } catch {
+      // ignore
+    } finally {
+      setIsLoadingPlugins(false);
+    }
+  };
+
+  useEffect(() => {
+    loadPlugins();
+  }, [user?.customerId]);
+
   useEffect(() => {
     async function loadRealStats() {
       if (!user?.customerId) return;
@@ -293,6 +335,61 @@ export function ErpConnectionsPage() {
     toast.info("Integração desconectada com sucesso.");
   };
 
+  // Plugin Handlers
+  const handleOpenPluginModal = (plugin: HubPluginDto) => {
+    setActivePluginModal(plugin);
+    setPluginFormValues(plugin.currentConfiguration || {});
+  };
+
+  const handleSavePlugin = async () => {
+    if (!activePluginModal || !user?.customerId) return;
+    setIsSavingPlugin(true);
+    try {
+      await installOrUpdateCustomerPlugin(user.customerId, activePluginModal.systemName, pluginFormValues);
+      toast.success(`Plugin ${activePluginModal.friendlyName || activePluginModal.systemName} configurado e ativado com sucesso!`);
+      setActivePluginModal(null);
+      await loadPlugins();
+    } catch {
+      toast.error("Erro ao salvar configuração do plugin.");
+    } finally {
+      setIsSavingPlugin(false);
+    }
+  };
+
+  const handleTogglePlugin = async (plugin: HubPluginDto) => {
+    if (!user?.customerId) return;
+    const nextState = !plugin.isEnabledForCustomer;
+    try {
+      await toggleCustomerPluginStatus(user.customerId, plugin.systemName, nextState);
+      toast.success(`Plugin ${plugin.friendlyName || plugin.systemName} ${nextState ? "ativado" : "desativado"} com sucesso!`);
+      await loadPlugins();
+    } catch {
+      toast.error("Erro ao alternar status do plugin.");
+    }
+  };
+
+  const handleUninstallPlugin = async (plugin: HubPluginDto) => {
+    if (!user?.customerId) return;
+    if (!confirm(`Deseja realmente desinstalar o plugin ${plugin.friendlyName || plugin.systemName}?`)) return;
+    try {
+      await uninstallCustomerPlugin(user.customerId, plugin.systemName);
+      toast.info(`Plugin ${plugin.friendlyName || plugin.systemName} desinstalado da sua loja.`);
+      await loadPlugins();
+    } catch {
+      toast.error("Erro ao desinstalar plugin.");
+    }
+  };
+
+  const filteredHubPlugins = hubPlugins.filter((p) => {
+    const term = pluginSearch.toLowerCase();
+    return (
+      (p.friendlyName || "").toLowerCase().includes(term) ||
+      (p.systemName || "").toLowerCase().includes(term) ||
+      (p.description || "").toLowerCase().includes(term) ||
+      (p.kind || "").toLowerCase().includes(term)
+    );
+  });
+
   return (
     <div className="flex flex-col gap-6">
       {/* Header */}
@@ -300,131 +397,373 @@ export function ErpConnectionsPage() {
         <div>
           <h1 className="text-2xl font-bold tracking-tight text-foreground flex items-center gap-2">
             <Globe className="size-6 text-primary" />
-            Conexão com ERPs Online (Nuvem)
+            Conexão ERP Online & Catálogo de Plugins
           </h1>
           <p className="text-sm text-muted-foreground">
-            Conecte sua API REST ou ERP em nuvem para sincronizar produtos, preços, estoque e pedidos automaticamente.
+            Instale e gerencie os plugins oficiais do Hub Admin ou conecte seu ERP em nuvem para sincronização em tempo real.
           </p>
         </div>
 
         <div className="flex items-center gap-2">
           <Badge variant="outline" className="text-xs border-purple-500/30 text-purple-400 bg-purple-500/10 gap-1.5 py-1 px-3">
             <Zap className="size-3.5" />
-            100% em Nuvem (Sem Instalação)
+            100% em Nuvem (Sem Instalação Local)
           </Badge>
         </div>
       </div>
 
-      {/* Info Card */}
-      <Card className="border-primary/20 bg-gradient-to-r from-primary/10 via-primary/5 to-transparent">
-        <CardContent className="p-4 flex items-start gap-3">
-          <ShieldCheck className="size-5 text-primary shrink-0 mt-0.5" />
-          <div className="text-xs">
-            <p className="font-semibold text-foreground">Comunicação Direta Cloud-to-Cloud</p>
-            <p className="text-muted-foreground mt-0.5">
-              Você pode conectar a <strong>API REST do seu próprio sistema</strong> ou utilizar conectores oficiais para Bling, Tiny, Omie e ContaAzul. O Hub executa a sincronização em tempo real na nuvem.
-            </p>
+      {/* Main Tabs */}
+      <Tabs defaultValue="hub-plugins" className="w-full flex flex-col gap-4">
+        <TabsList className="grid grid-cols-3 max-w-xl">
+          <TabsTrigger value="hub-plugins" className="text-xs flex items-center gap-1.5">
+            <Boxes className="size-4" />
+            Plugins do Hub Admin ({hubPlugins.length})
+          </TabsTrigger>
+          <TabsTrigger value="erps" className="text-xs flex items-center gap-1.5">
+            <Store className="size-4" />
+            ERPs de Mercado
+          </TabsTrigger>
+          <TabsTrigger value="custom-rest" className="text-xs flex items-center gap-1.5">
+            <Database className="size-4" />
+            API REST & Webhook
+          </TabsTrigger>
+        </TabsList>
+
+        {/* Tab 1: Hub Admin Available Plugins */}
+        <TabsContent value="hub-plugins" className="flex flex-col gap-4 m-0">
+          <Card className="border-border/80">
+            <CardContent className="p-4 flex flex-col sm:flex-row gap-3 items-center justify-between">
+              <div className="relative w-full sm:w-80">
+                <Search className="absolute left-2.5 top-2.5 size-4 text-muted-foreground" />
+                <Input
+                  placeholder="Buscar plugins (Shopify, Nuvem Shop, Mercado Livre...)"
+                  value={pluginSearch}
+                  onChange={(e) => setPluginSearch(e.target.value)}
+                  className="pl-8 text-xs"
+                />
+              </div>
+
+              <div className="flex items-center gap-2">
+                <Button
+                  variant="outline"
+                  size="sm"
+                  onClick={() => loadPlugins()}
+                  disabled={isLoadingPlugins}
+                  className="h-8 text-xs gap-1.5"
+                >
+                  <RefreshCw className={`size-3.5 ${isLoadingPlugins ? "animate-spin" : ""}`} />
+                  Atualizar Catálogo
+                </Button>
+              </div>
+            </CardContent>
+          </Card>
+
+          {/* Plugin Grid */}
+          <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3">
+            {filteredHubPlugins.map((plugin) => {
+              const isInstalled = Boolean(plugin.isInstalledForCustomer);
+              const isEnabled = Boolean(plugin.isEnabledForCustomer);
+
+              return (
+                <Card
+                  key={plugin.systemName}
+                  className={`border flex flex-col justify-between transition-all ${
+                    isInstalled && isEnabled
+                      ? "border-emerald-500/40 bg-card/90 shadow-sm"
+                      : isInstalled
+                      ? "border-amber-500/30 bg-card/60"
+                      : "border-border/80 bg-card hover:border-border"
+                  }`}
+                >
+                  <CardHeader className="pb-3">
+                    <div className="flex items-start justify-between gap-2">
+                      <div className="flex items-center gap-2.5">
+                        <div className="flex size-10 items-center justify-center rounded-lg bg-primary/10 border border-primary/20 text-primary font-bold text-sm">
+                          {(plugin.friendlyName || plugin.systemName).substring(0, 2).toUpperCase()}
+                        </div>
+                        <div>
+                          <CardTitle className="text-base font-bold text-foreground leading-tight">
+                            {plugin.friendlyName || plugin.systemName}
+                          </CardTitle>
+                          <p className="text-[11px] font-mono text-muted-foreground mt-0.5">
+                            {plugin.systemName}
+                          </p>
+                        </div>
+                      </div>
+
+                      <Badge
+                        variant={isInstalled && isEnabled ? "success" : isInstalled ? "warning" : "secondary"}
+                        className="text-[10px]"
+                      >
+                        {isInstalled && isEnabled ? "Ativo" : isInstalled ? "Pausado" : "Disponível"}
+                      </Badge>
+                    </div>
+
+                    <CardDescription className="text-xs line-clamp-2 mt-2">
+                      {plugin.description || "Módulo de integração para sincronização em nuvem."}
+                    </CardDescription>
+
+                    <div className="flex items-center gap-3 text-[11px] text-muted-foreground pt-2 border-t border-border/40 font-mono">
+                      <span>Autor: {plugin.author || "Amura"}</span>
+                      <span>v{plugin.version || "1.0.0"}</span>
+                      <Badge variant="outline" className="text-[9px] py-0 px-1.5 ml-auto">
+                        {plugin.kind || plugin.group || "Geral"}
+                      </Badge>
+                    </div>
+                  </CardHeader>
+
+                  <CardFooter className="pt-2 border-t border-border/50 flex items-center justify-between gap-2">
+                    {isInstalled ? (
+                      <>
+                        <Button
+                          variant="outline"
+                          size="sm"
+                          onClick={() => handleOpenPluginModal(plugin)}
+                          className="flex-1 text-xs gap-1 h-8"
+                        >
+                          <Settings2 className="size-3.5" />
+                          Editar Configuração
+                        </Button>
+
+                        <Button
+                          variant={isEnabled ? "ghost" : "outline"}
+                          size="sm"
+                          onClick={() => handleTogglePlugin(plugin)}
+                          className={`h-8 text-xs gap-1 ${isEnabled ? "text-amber-400 hover:text-amber-300 hover:bg-amber-500/10" : "text-emerald-400"}`}
+                          title={isEnabled ? "Pausar Plugin" : "Ativar Plugin"}
+                        >
+                          <Power className="size-3.5" />
+                          {isEnabled ? "Pausar" : "Ativar"}
+                        </Button>
+
+                        <Button
+                          variant="ghost"
+                          size="icon"
+                          onClick={() => handleUninstallPlugin(plugin)}
+                          className="size-8 text-rose-400 hover:text-rose-300 hover:bg-rose-500/10"
+                          title="Desinstalar Plugin"
+                        >
+                          <Trash2 className="size-3.5" />
+                        </Button>
+                      </>
+                    ) : (
+                      <Button
+                        size="sm"
+                        onClick={() => handleOpenPluginModal(plugin)}
+                        className="w-full text-xs gap-1.5 h-8 bg-primary hover:bg-primary/90 text-primary-foreground font-semibold"
+                      >
+                        <Plug className="size-3.5" />
+                        Instalar e Configurar
+                      </Button>
+                    )}
+                  </CardFooter>
+                </Card>
+              );
+            })}
           </div>
-        </CardContent>
-      </Card>
+        </TabsContent>
 
-      {/* Providers Grid */}
-      <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3">
-        {providers.map((provider) => {
-          const isConnected = provider.status === "CONNECTED";
+        {/* Tab 2: Standard Cloud ERP Providers */}
+        <TabsContent value="erps" className="m-0">
+          <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3">
+            {providers
+              .filter((p) => p.id !== "custom_rest")
+              .map((provider) => {
+                const isConnected = provider.status === "CONNECTED";
 
-          return (
-            <Card
-              key={provider.id}
-              className={`border transition-all flex flex-col justify-between ${
-                isConnected
-                  ? "border-emerald-500/30 bg-card"
-                  : "border-border/80 hover:border-border"
-              }`}
-            >
-              <CardHeader className="pb-3">
-                <div className="flex items-center justify-between">
-                  <div
-                    className={`flex size-10 items-center justify-center rounded-lg border font-bold text-sm ${provider.logoColor}`}
+                return (
+                  <Card
+                    key={provider.id}
+                    className={`border transition-all flex flex-col justify-between ${
+                      isConnected
+                        ? "border-emerald-500/30 bg-card"
+                        : "border-border/80 hover:border-border"
+                    }`}
                   >
-                    {provider.name.substring(0, 2).toUpperCase()}
+                    <CardHeader className="pb-3">
+                      <div className="flex items-center justify-between">
+                        <div
+                          className={`flex size-10 items-center justify-center rounded-lg border font-bold text-sm ${provider.logoColor}`}
+                        >
+                          {provider.name.substring(0, 2).toUpperCase()}
+                        </div>
+                        <Badge
+                          variant={isConnected ? "success" : "secondary"}
+                          className="text-[10px]"
+                        >
+                          {isConnected ? "Conectado" : "Não Conectado"}
+                        </Badge>
+                      </div>
+                      <CardTitle className="text-base mt-2">{provider.name}</CardTitle>
+                      <CardDescription className="text-xs line-clamp-2">
+                        {provider.description}
+                      </CardDescription>
+                    </CardHeader>
+
+                    <CardContent className="flex flex-col gap-3">
+                      <div className="flex items-center gap-2 pt-2 border-t border-border/50">
+                        {isConnected ? (
+                          <>
+                            <Button
+                              variant="outline"
+                              size="sm"
+                              onClick={() => handleOpenConfig(provider)}
+                              className="flex-1 text-xs gap-1"
+                            >
+                              <Settings2 className="size-3.5" />
+                              Configurar
+                            </Button>
+                            <Button
+                              variant="ghost"
+                              size="sm"
+                              onClick={() => handleDisconnect(provider.id)}
+                              className="text-xs text-destructive hover:text-destructive hover:bg-destructive/10"
+                            >
+                              Desconectar
+                            </Button>
+                          </>
+                        ) : (
+                          <Button
+                            size="sm"
+                            onClick={() => handleOpenConfig(provider)}
+                            className="w-full text-xs gap-1.5"
+                          >
+                            <Plug className="size-3.5" />
+                            Conectar
+                          </Button>
+                        )}
+                      </div>
+                    </CardContent>
+                  </Card>
+                );
+              })}
+          </div>
+        </TabsContent>
+
+        {/* Tab 3: Custom REST & Webhook */}
+        <TabsContent value="custom-rest" className="m-0 flex flex-col gap-4">
+          <Card className="border-border/80">
+            <CardHeader>
+              <CardTitle className="text-base flex items-center gap-2">
+                <Database className="size-4 text-purple-400" />
+                Integração REST Sob Medida (Seu Próprio ERP)
+              </CardTitle>
+              <CardDescription className="text-xs">
+                Utilize endpoints REST seguros para comunicar seu sistema com o Hub em tempo real.
+              </CardDescription>
+            </CardHeader>
+            <CardContent className="flex flex-col gap-4">
+              {providers
+                .filter((p) => p.id === "custom_rest")
+                .map((provider) => (
+                  <div key={provider.id} className="flex flex-col gap-4">
+                    <div className="grid gap-3 sm:grid-cols-2">
+                      {provider.fields.map((field) => (
+                        <div key={field.key} className="flex flex-col gap-1.5">
+                          <label className="text-xs font-semibold text-foreground">{field.label}</label>
+                          <Input
+                            type={field.type}
+                            placeholder={field.placeholder}
+                            value={formFields[field.key] || field.value || ""}
+                            onChange={(e) => handleFieldChange(field.key, e.target.value)}
+                            className="text-xs font-mono"
+                          />
+                          {field.description && (
+                            <span className="text-[11px] text-muted-foreground">{field.description}</span>
+                          )}
+                        </div>
+                      ))}
+                    </div>
+
+                    <div className="flex justify-end pt-3 border-t border-border/60">
+                      <Button
+                        size="sm"
+                        onClick={handleTestConnection}
+                        disabled={isTesting}
+                        className="text-xs gap-1.5 bg-purple-600 hover:bg-purple-700 text-white"
+                      >
+                        <Zap className={`size-3.5 ${isTesting ? "animate-spin" : ""}`} />
+                        {isTesting ? "Validando Endpoints..." : "Salvar Configuração REST"}
+                      </Button>
+                    </div>
                   </div>
-                  <Badge
-                    variant={isConnected ? "success" : "secondary"}
-                    className="text-[10px]"
-                  >
-                    {isConnected ? "Conectado" : "Não Conectado"}
-                  </Badge>
+                ))}
+            </CardContent>
+          </Card>
+        </TabsContent>
+      </Tabs>
+
+      {/* Hub Admin Plugin Installation & Configuration Modal */}
+      {activePluginModal && (
+        <Dialog open={Boolean(activePluginModal)} onOpenChange={(open) => !open && setActivePluginModal(null)}>
+          <DialogContent className="max-w-lg">
+            <DialogHeader>
+              <div className="flex items-center gap-2">
+                <Boxes className="size-5 text-primary" />
+                <div>
+                  <DialogTitle className="text-base font-bold">
+                    Configurar {activePluginModal.friendlyName || activePluginModal.systemName}
+                  </DialogTitle>
+                  <p className="text-xs text-muted-foreground font-mono">
+                    {activePluginModal.systemName} • v{activePluginModal.version || "1.0.0"}
+                  </p>
                 </div>
-                <CardTitle className="text-base mt-2">{provider.name}</CardTitle>
-                <CardDescription className="text-xs line-clamp-2">
-                  {provider.description}
-                </CardDescription>
-              </CardHeader>
+              </div>
+              <DialogDescription className="text-xs pt-1">
+                {activePluginModal.description || "Preencha as credenciais de autenticação da integração para habilitar a sincronização."}
+              </DialogDescription>
+            </DialogHeader>
 
-              <CardContent className="flex flex-col gap-3">
-                {isConnected && provider.stats && (
-                  <div className="grid grid-cols-3 gap-1.5 rounded-lg bg-muted/40 p-2.5 text-center text-xs border border-border/50">
-                    <div>
-                      <p className="text-[10px] text-muted-foreground">Catálogo</p>
-                      <p className="font-bold text-foreground">
-                        {provider.stats.productsAvailable}
-                      </p>
-                    </div>
-                    <div>
-                      <p className="text-[10px] text-muted-foreground">Pedidos</p>
-                      <p className="font-bold text-foreground">
-                        {provider.stats.syncedOrders24h}
-                      </p>
-                    </div>
-                    <div>
-                      <p className="text-[10px] text-muted-foreground">Latência</p>
-                      <p className="font-bold text-emerald-400">
-                        {provider.stats.latencyMs}ms
-                      </p>
-                    </div>
-                  </div>
-                )}
-
-                <div className="flex items-center gap-2 pt-2 border-t border-border/50">
-                  {isConnected ? (
-                    <>
-                      <Button
-                        variant="outline"
-                        size="sm"
-                        onClick={() => handleOpenConfig(provider)}
-                        className="flex-1 text-xs gap-1"
-                      >
-                        <Settings2 className="size-3.5" />
-                        Configurar
-                      </Button>
-                      <Button
-                        variant="ghost"
-                        size="sm"
-                        onClick={() => handleDisconnect(provider.id)}
-                        className="text-xs text-destructive hover:text-destructive hover:bg-destructive/10"
-                      >
-                        Desconectar
-                      </Button>
-                    </>
-                  ) : (
-                    <Button
-                      size="sm"
-                      onClick={() => handleOpenConfig(provider)}
-                      className="w-full text-xs gap-1.5"
-                    >
-                      <Plug className="size-3.5" />
-                      Conectar
-                    </Button>
+            <div className="flex flex-col gap-3 py-3 text-xs max-h-[60vh] overflow-y-auto">
+              {(activePluginModal.configurationSchema?.fields || [
+                { id: "apiKey", label: "Chave de API / Access Token", type: "password", required: true },
+              ]).map((field) => (
+                <div key={field.id} className="flex flex-col gap-1.5">
+                  <label className="font-semibold text-foreground flex items-center justify-between">
+                    <span>{field.label} {field.required && <span className="text-rose-400">*</span>}</span>
+                  </label>
+                  <Input
+                    type={field.type || "text"}
+                    placeholder={field.placeholder || `Informe ${field.label.toLowerCase()}`}
+                    value={pluginFormValues[field.id] ?? ""}
+                    onChange={(e) =>
+                      setPluginFormValues((prev) => ({
+                        ...prev,
+                        [field.id]: e.target.value,
+                      }))
+                    }
+                    className="text-xs font-mono"
+                  />
+                  {field.description && (
+                    <span className="text-[11px] text-muted-foreground">{field.description}</span>
                   )}
                 </div>
-              </CardContent>
-            </Card>
-          );
-        })}
-      </div>
+              ))}
+            </div>
 
-      {/* Config / Credentials Modal */}
+            <DialogFooter className="gap-2 sm:justify-between pt-2 border-t border-border/50">
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={() => setActivePluginModal(null)}
+              >
+                Cancelar
+              </Button>
+              <Button
+                size="sm"
+                onClick={handleSavePlugin}
+                disabled={isSavingPlugin}
+                className="gap-1.5 bg-primary hover:bg-primary/90 text-primary-foreground font-semibold"
+              >
+                <Check className={`size-3.5 ${isSavingPlugin ? "animate-spin" : ""}`} />
+                {isSavingPlugin ? "Salvando..." : "Salvar e Ativar Plugin"}
+              </Button>
+            </DialogFooter>
+          </DialogContent>
+        </Dialog>
+      )}
+
+      {/* Standard ERP Config Modal */}
       {activeModalProvider && (
         <Dialog open={Boolean(activeModalProvider)} onOpenChange={(open) => !open && setActiveModalProvider(null)}>
           <DialogContent className="max-w-lg">
@@ -482,3 +821,4 @@ export function ErpConnectionsPage() {
     </div>
   );
 }
+
