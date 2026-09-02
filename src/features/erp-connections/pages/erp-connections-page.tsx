@@ -1,4 +1,5 @@
 import { useState, useEffect } from "react";
+import { useQuery, useQueryClient } from "@tanstack/react-query";
 import {
   Plug,
   CheckCircle2,
@@ -202,35 +203,28 @@ const INITIAL_PROVIDERS: ErpProvider[] = [
 
 export function ErpConnectionsPage() {
   const { user } = useAuth();
+  const queryClient = useQueryClient();
   const [providers, setProviders] = useState<ErpProvider[]>(INITIAL_PROVIDERS);
   const [activeModalProvider, setActiveModalProvider] = useState<ErpProvider | null>(null);
   const [isTesting, setIsTesting] = useState(false);
   const [formFields, setFormFields] = useState<Record<string, string>>({});
 
-  // Hub Admin Plugins State
-  const [hubPlugins, setHubPlugins] = useState<HubPluginDto[]>([]);
-  const [isLoadingPlugins, setIsLoadingPlugins] = useState(false);
+  // Hub Admin Plugins via React Query
   const [pluginSearch, setPluginSearch] = useState("");
   const [activePluginModal, setActivePluginModal] = useState<HubPluginDto | null>(null);
   const [pluginFormValues, setPluginFormValues] = useState<Record<string, any>>({});
   const [isSavingPlugin, setIsSavingPlugin] = useState(false);
 
-  const loadPlugins = async () => {
-    if (!user?.customerId) return;
-    setIsLoadingPlugins(true);
-    try {
-      const data = await fetchHubAvailablePlugins(user.customerId);
-      setHubPlugins(data);
-    } catch {
-      // ignore
-    } finally {
-      setIsLoadingPlugins(false);
-    }
-  };
-
-  useEffect(() => {
-    loadPlugins();
-  }, [user?.customerId]);
+  const {
+    data: hubPlugins = [],
+    isLoading: isLoadingPlugins,
+    refetch: refetchPlugins,
+  } = useQuery({
+    queryKey: ["hub-plugins", user?.customerId],
+    queryFn: () => (user?.customerId ? fetchHubAvailablePlugins(user.customerId) : Promise.resolve([])),
+    enabled: Boolean(user?.customerId),
+    staleTime: 30000,
+  });
 
   useEffect(() => {
     async function loadRealStats() {
@@ -349,7 +343,7 @@ export function ErpConnectionsPage() {
       await installOrUpdateCustomerPlugin(user.customerId, activePluginModal.systemName, pluginFormValues);
       toast.success(`Plugin ${activePluginModal.friendlyName || activePluginModal.systemName} configurado e ativado com sucesso!`);
       setActivePluginModal(null);
-      await loadPlugins();
+      queryClient.invalidateQueries({ queryKey: ["hub-plugins", user?.customerId] });
     } catch {
       toast.error("Erro ao salvar configuração do plugin.");
     } finally {
@@ -363,7 +357,7 @@ export function ErpConnectionsPage() {
     try {
       await toggleCustomerPluginStatus(user.customerId, plugin.systemName, nextState);
       toast.success(`Plugin ${plugin.friendlyName || plugin.systemName} ${nextState ? "ativado" : "desativado"} com sucesso!`);
-      await loadPlugins();
+      queryClient.invalidateQueries({ queryKey: ["hub-plugins", user?.customerId] });
     } catch {
       toast.error("Erro ao alternar status do plugin.");
     }
@@ -375,7 +369,7 @@ export function ErpConnectionsPage() {
     try {
       await uninstallCustomerPlugin(user.customerId, plugin.systemName);
       toast.info(`Plugin ${plugin.friendlyName || plugin.systemName} desinstalado da sua loja.`);
-      await loadPlugins();
+      queryClient.invalidateQueries({ queryKey: ["hub-plugins", user?.customerId] });
     } catch {
       toast.error("Erro ao desinstalar plugin.");
     }
@@ -698,7 +692,7 @@ export function ErpConnectionsPage() {
                 <Button
                   variant="outline"
                   size="sm"
-                  onClick={() => loadPlugins()}
+                  onClick={() => refetchPlugins()}
                   disabled={isLoadingPlugins}
                   className="h-8 text-xs gap-1.5"
                 >

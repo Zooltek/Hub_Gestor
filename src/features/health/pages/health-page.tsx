@@ -1,4 +1,5 @@
 import { useState, useEffect } from "react";
+import { useQuery } from "@tanstack/react-query";
 import { Activity, Server, Globe, Cloud, CheckCircle2, AlertTriangle, RefreshCw, Terminal, ShieldCheck } from "lucide-react";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -14,26 +15,27 @@ interface HealthLogEntry {
 }
 
 export function HealthPage() {
-  const [latency, setLatency] = useState<number | null>(null);
-  const [isOnline, setIsOnline] = useState<boolean>(true);
-  const [isTesting, setIsTesting] = useState(false);
   const [lastCheck, setLastCheck] = useState<string>(new Date().toISOString());
   const [logs, setLogs] = useState<HealthLogEntry[]>([]);
 
-  const runConnectivityTest = async (showToast = true) => {
-    setIsTesting(true);
-    const now = new Date().toISOString();
-    try {
-      const result = await checkHubHealth();
-      setLatency(result.latencyMs);
-      setIsOnline(result.online);
+  const {
+    data: healthResult,
+    isFetching: isTesting,
+    refetch,
+  } = useQuery({
+    queryKey: ["hub-health-alive"],
+    queryFn: async () => {
+      const now = new Date().toISOString();
       setLastCheck(now);
+      const res = await checkHubHealth();
 
       const newEntries: HealthLogEntry[] = [
         {
           timestamp: now,
           type: "gateway",
-          message: `Endpoint /alive respondeu com status 200 OK em ${result.latencyMs}ms.`,
+          message: res.online
+            ? `Endpoint /alive respondeu com status 200 OK em ${res.latencyMs}ms.`
+            : "Falha ao atingir o endpoint /alive do Hub.",
         },
         {
           timestamp: now,
@@ -41,37 +43,28 @@ export function HealthPage() {
           message: "Conector Cloud REST API operacional e escutando webhooks.",
         },
       ];
-
       setLogs((prev) => [...newEntries, ...prev.slice(0, 10)]);
+      return res;
+    },
+    staleTime: 15000,
+    refetchInterval: 30000, // Heartbeat automático a cada 30 segundos
+  });
 
-      if (showToast) {
-        if (result.online) {
-          toast.success(`Hub de Produção respondendo com ${result.latencyMs}ms de latência!`);
-        } else {
-          toast.error("Falha ao comunicar com o servidor do Hub.");
-        }
+  const isOnline = healthResult?.online ?? true;
+  const latency = healthResult?.latencyMs ?? null;
+
+  const handleManualTest = async () => {
+    try {
+      const { data } = await refetch();
+      if (data?.online) {
+        toast.success(`Hub de Produção respondendo com ${data.latencyMs}ms de latência!`);
+      } else {
+        toast.error("Falha ao comunicar com o servidor do Hub.");
       }
     } catch {
-      setIsOnline(false);
-      setLogs((prev) => [
-        {
-          timestamp: now,
-          type: "gateway",
-          message: "Falha ao atingir o endpoint /alive do Hub.",
-        },
-        ...prev,
-      ]);
-      if (showToast) {
-        toast.error("Erro inesperado no teste de conectividade.");
-      }
-    } finally {
-      setIsTesting(false);
+      toast.error("Erro inesperado no teste de conectividade.");
     }
   };
-
-  useEffect(() => {
-    runConnectivityTest(false);
-  }, []);
 
   return (
     <div className="flex flex-col gap-6">
@@ -89,10 +82,11 @@ export function HealthPage() {
 
         <Button
           size="sm"
-          onClick={() => runConnectivityTest(true)}
+          onClick={handleManualTest}
           disabled={isTesting}
+          className="gap-1.5 text-xs"
         >
-          <Activity className={`size-3.5 mr-1.5 ${isTesting ? "animate-spin" : ""}`} />
+          <RefreshCw className={`size-3.5 ${isTesting ? "animate-spin" : ""}`} />
           {isTesting ? "Testando Pontas..." : "Testar Conectividade Geral"}
         </Button>
       </div>
@@ -159,90 +153,93 @@ export function HealthPage() {
               <span className="font-semibold text-foreground">HTTPS Webhook</span>
             </div>
             <div className="flex justify-between py-1 border-b border-border/50">
-              <span className="text-muted-foreground">Autenticação:</span>
-              <span className="font-mono text-foreground">API Token Seguro</span>
+              <span className="text-muted-foreground">Protocolo:</span>
+              <span className="font-mono text-xs text-foreground">REST / JSON</span>
             </div>
             <div className="flex justify-between py-1 border-b border-border/50">
-              <span className="text-muted-foreground">Fila de Pedidos:</span>
-              <span className="font-semibold text-emerald-400">0 pendências</span>
+              <span className="text-muted-foreground">Sincronização:</span>
+              <span className="text-emerald-400 font-medium">Automática Ativa</span>
             </div>
             <div className="flex justify-between py-1">
-              <span className="text-muted-foreground">Status do Serviço:</span>
-              <span className="font-bold text-emerald-400">Ativo</span>
+              <span className="text-muted-foreground">Conexão:</span>
+              <span className="font-semibold text-foreground">Ativa (24h)</span>
             </div>
           </CardContent>
         </Card>
 
-        {/* Node 3: Marketplaces */}
+        {/* Node 3: Marketplaces & Canais */}
         <Card className="border-border/80 relative overflow-hidden">
           <div className="absolute top-0 left-0 right-0 h-1 bg-sky-500" />
           <CardHeader className="pb-3">
             <div className="flex items-center justify-between">
               <CardTitle className="text-base flex items-center gap-2">
                 <Cloud className="size-4 text-sky-400" />
-                <span>Marketplaces</span>
+                <span>Canais Integrados</span>
               </CardTitle>
-              <Badge variant="success" className="text-[10px]">Ativo</Badge>
+              <Badge variant="success" className="text-[10px]">Online</Badge>
             </div>
             <CardDescription className="text-xs">
-              Conexões oficiais de marketplace configuradas
+              Mercado Livre, Shopify, Tray, etc.
             </CardDescription>
           </CardHeader>
           <CardContent className="flex flex-col gap-2.5 text-xs">
             <div className="flex justify-between py-1 border-b border-border/50">
-              <span className="text-muted-foreground">Status do Conector:</span>
-              <span className="font-semibold text-emerald-400">Ativo na Nuvem</span>
+              <span className="text-muted-foreground">Mercado Livre:</span>
+              <span className="text-emerald-400 font-semibold flex items-center gap-1">
+                <span className="size-1.5 rounded-full bg-emerald-500" />
+                Ativo
+              </span>
             </div>
             <div className="flex justify-between py-1 border-b border-border/50">
-              <span className="text-muted-foreground">Esteira de Produtos:</span>
-              <span className="font-semibold text-foreground">Operacional</span>
+              <span className="text-muted-foreground">Shopify Store:</span>
+              <span className="text-emerald-400 font-semibold flex items-center gap-1">
+                <span className="size-1.5 rounded-full bg-emerald-500" />
+                Ativo
+              </span>
             </div>
             <div className="flex justify-between py-1 border-b border-border/50">
-              <span className="text-muted-foreground">Recepção de Pedidos:</span>
-              <span className="font-semibold text-emerald-400">Automático</span>
+              <span className="text-muted-foreground">Fila de Notificações:</span>
+              <span className="font-mono text-foreground font-semibold">0 pendentes</span>
             </div>
             <div className="flex justify-between py-1">
-              <span className="text-muted-foreground">Sincronização:</span>
-              <span className="font-bold text-emerald-400">Tempo Real</span>
+              <span className="text-muted-foreground">OAuth Tokens:</span>
+              <span className="text-emerald-400 font-medium">Válidos</span>
             </div>
           </CardContent>
         </Card>
       </div>
 
-      {/* Operational Diagnostic Log Box */}
+      {/* Terminal / Live Logs View */}
       <Card className="border-border/80">
-        <CardHeader className="pb-2">
-          <CardTitle className="text-base flex items-center gap-2">
+        <CardHeader className="p-4 pb-2 border-b border-border/50 flex flex-row items-center justify-between">
+          <div className="flex items-center gap-2">
             <Terminal className="size-4 text-primary" />
-            <span>Registro de Sincronizações e Testes da Sessão</span>
-          </CardTitle>
-          <CardDescription className="text-xs">
-            Log em tempo real das comunicações efetuadas com a API do Hub
-          </CardDescription>
-        </CardHeader>
-        <CardContent>
-          <div className="rounded-lg bg-black/60 p-3 font-mono text-xs text-muted-foreground border border-border/60 divide-y divide-white/5 max-h-48 overflow-y-auto">
-            {logs.length === 0 ? (
-              <div className="py-1 text-muted-foreground">
-                [{formatDateTime(lastCheck)}] [Gateway] Conexão com o servidor de produção verificada com sucesso.
-              </div>
-            ) : (
-              logs.map((log, index) => (
-                <div
-                  key={index}
-                  className={`py-1 ${
-                    log.type === "gateway"
-                      ? "text-emerald-400"
-                      : log.type === "erp"
-                      ? "text-purple-300"
-                      : "text-sky-300"
-                  }`}
-                >
-                  [{formatDateTime(log.timestamp)}] [{log.type.toUpperCase()}] {log.message}
-                </div>
-              ))
-            )}
+            <CardTitle className="text-sm font-semibold">Registro de Eventos de Conexão em Tempo Real</CardTitle>
           </div>
+          <Badge variant="outline" className="text-[10px] font-mono">
+            {logs.length} eventos registrados
+          </Badge>
+        </CardHeader>
+        <CardContent className="p-4 font-mono text-xs bg-muted/20 rounded-b-lg max-h-64 overflow-y-auto space-y-2">
+          {logs.map((log, index) => (
+            <div key={index} className="flex items-start gap-2">
+              <span className="text-muted-foreground text-[10px] whitespace-nowrap">
+                [{formatDateTime(log.timestamp)}]
+              </span>
+              <span
+                className={`text-[10px] font-bold uppercase px-1 rounded ${
+                  log.type === "gateway"
+                    ? "bg-primary/20 text-primary"
+                    : log.type === "erp"
+                    ? "bg-emerald-500/20 text-emerald-400"
+                    : "bg-sky-500/20 text-sky-400"
+                }`}
+              >
+                {log.type}
+              </span>
+              <span className="text-foreground">{log.message}</span>
+            </div>
+          ))}
         </CardContent>
       </Card>
     </div>

@@ -7,7 +7,7 @@ import type { IntegrationHealthStatus, ProductBatchDto, CustomerOrderDto } from 
 export async function checkHubHealth(): Promise<{ online: boolean; latencyMs: number }> {
   const start = performance.now();
   try {
-    await http.get("/alive");
+    await http.get("/alive", { timeout: 5000 });
     const latencyMs = Math.round(performance.now() - start);
     return { online: true, latencyMs };
   } catch {

@@ -42,8 +42,10 @@ import {
 } from "@/components/ui/dialog";
 import { ConcurrencyBanner } from "@/components/shared/concurrency-banner";
 import { StatusBadge } from "@/components/shared/status-badge";
+import { Breadcrumbs } from "@/components/shared/breadcrumbs";
 import { useConcurrencyLock } from "@/hooks/use-concurrency-lock";
 import { useAuth } from "@/app/providers/auth-provider";
+import { useQuery, useQueryClient } from "@tanstack/react-query";
 import {
   fetchProductBatchById,
   approveProductChangesBatch,
@@ -71,63 +73,36 @@ function getBatchStatusTone(statusLabel: string): StatusTone {
 export function ProductImportBatchPage() {
   const { batchId } = useParams();
   const { user } = useAuth();
+  const queryClient = useQueryClient();
 
-  const [batch, setBatch] = useState<ProductBatchDto | null>(null);
-  const [items, setItems] = useState<ProductChangeDto[]>([]);
   const [searchTerm, setSearchTerm] = useState("");
   const [statusFilter, setStatusFilter] = useState("all");
   const [selectedIds, setSelectedIds] = useState<string[]>([]);
   const [expandedReferences, setExpandedReferences] = useState<string[]>([]);
   const [inspectedItem, setInspectedItem] = useState<ProductChangeDto | null>(null);
   const [inspectTab, setInspectTab] = useState<"diff" | "snapshots" | "raw">("diff");
-  const [isLoading, setIsLoading] = useState(false);
   const [isActionInProgress, setIsActionInProgress] = useState(false);
+
+  const {
+    data: batchData,
+    isLoading,
+    isFetching,
+    refetch: refetchBatchDetails,
+  } = useQuery({
+    queryKey: ["batch-details", batchId],
+    queryFn: () => (batchId ? fetchProductBatchById(batchId) : Promise.resolve(null)),
+    enabled: Boolean(batchId),
+    staleTime: 30000,
+  });
+
+  const batch = batchData?.batch || null;
+  const items = batchData?.items || [];
 
   const { activeLock, isLockedByMe, isLockedByOther } = useConcurrencyLock(
     "batch",
     batchId,
     false
   );
-
-  const loadBatchDetails = async (showToast = false) => {
-    if (!batchId || !user?.customerId) return;
-    setIsLoading(true);
-    try {
-      const result = await fetchProductBatchById(batchId);
-      if (result) {
-        setBatch(result.batch);
-        setItems(result.items);
-        if (showToast) {
-          toast.success(`Lote atualizado com sucesso! (${result.items.length} itens encontrados)`);
-        }
-      } else {
-        setBatch({
-          id: batchId,
-          batchNumber: `LOTE-${batchId.slice(0, 8)}`,
-          fileName: "Produtos_Sincronizados.csv",
-          totalItems: 0,
-          processedItems: 0,
-          successItems: 0,
-          errorItems: 0,
-          status: "CONCLUIDO",
-          startedAtUtc: new Date().toISOString(),
-          channelName: "Esteira",
-          version: 1,
-        });
-        setItems([]);
-      }
-    } catch (error) {
-      if (showToast) {
-        toast.error("Erro ao consultar detalhes do lote na API.");
-      }
-    } finally {
-      setIsLoading(false);
-    }
-  };
-
-  useEffect(() => {
-    loadBatchDetails();
-  }, [batchId, user?.customerId]);
 
   const filteredItems = items.filter((item) => {
     const matchesSearch =
@@ -221,9 +196,9 @@ export function ProductImportBatchPage() {
     setIsActionInProgress(true);
     try {
       await approveProductChangesBatch(selectedIds, user.customerId);
-      toast.success(`${selectedIds.length} item(ns) aprovados com sucesso no Hub!`);
+      queryClient.invalidateQueries({ queryKey: ["batch-details", batchId] });
+      toast.success(`${selectedIds.length} produto(s) aprovados na esteira com sucesso!`);
       setSelectedIds([]);
-      await loadBatchDetails();
     } catch {
       toast.error("Erro ao aprovar alterações na API.");
     } finally {
@@ -231,8 +206,8 @@ export function ProductImportBatchPage() {
     }
   };
 
-  const handleForceDispatch = async () => {
-    if (!items.length) return;
+  const handleForceDispatchBatch = async () => {
+    if (!batchId || isActionInProgress) return;
     if (isLockedByOther) {
       toast.error("Ação bloqueada: Outro operador está com o lock deste lote.");
       return;
@@ -244,8 +219,8 @@ export function ProductImportBatchPage() {
       if (firstItem) {
         await forceDispatchProductChange(firstItem.id);
       }
+      queryClient.invalidateQueries({ queryKey: ["batch-details", batchId] });
       toast.success("Despacho disparado para os canais integrados!");
-      await loadBatchDetails();
     } catch {
       toast.error("Erro ao forçar despacho na API.");
     } finally {
@@ -269,7 +244,15 @@ export function ProductImportBatchPage() {
 
   return (
     <div className="flex flex-col gap-6">
-      {/* Top Header & Breadcrumb */}
+      {/* Breadcrumbs de Navegação */}
+      <Breadcrumbs
+        items={[
+          { label: "Lotes & Pipeline", href: "/lotes-produtos" },
+          { label: currentBatch.fileName || currentBatch.batchNumber },
+        ]}
+      />
+
+      {/* Top Header */}
       <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
         <div className="flex items-center gap-3">
           <Button asChild variant="outline" size="icon" className="size-8">
@@ -298,12 +281,12 @@ export function ProductImportBatchPage() {
           <Button
             variant="outline"
             size="sm"
-            onClick={() => loadBatchDetails(true)}
-            disabled={isLoading}
+            onClick={() => refetchBatchDetails()}
+            disabled={isFetching}
             className="h-8 text-xs gap-1.5"
           >
-            <RefreshCw className={`size-3.5 ${isLoading ? "animate-spin" : ""}`} />
-            Atualizar
+            <RefreshCw className={`size-3.5 ${isFetching ? "animate-spin" : ""}`} />
+            {isFetching ? "Atualizando..." : "Atualizar"}
           </Button>
 
           <Button
@@ -319,7 +302,7 @@ export function ProductImportBatchPage() {
           <Button
             variant="secondary"
             size="sm"
-            onClick={handleForceDispatch}
+            onClick={handleForceDispatchBatch}
             disabled={isActionInProgress}
             className="h-8 text-xs gap-1.5"
           >
