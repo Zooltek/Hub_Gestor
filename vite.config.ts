@@ -16,6 +16,8 @@ export default defineConfig({
   server: {
     host: "0.0.0.0",
     port,
+    cors: true,
+    allowedHosts: true,
     proxy: {
       "/api": {
         target: apiTarget,
@@ -37,6 +39,8 @@ export default defineConfig({
   preview: {
     host: "0.0.0.0",
     port,
+    cors: true,
+    allowedHosts: true,
     proxy: {
       "/api": {
         target: apiTarget,
