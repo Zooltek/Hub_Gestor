@@ -309,25 +309,50 @@ export async function fetchProductBatches(customerId: string): Promise<ProductBa
     }
 
     if (Array.isArray(rawItems) && rawItems.length > 0) {
-      return rawItems.map((b: any) => ({
-        id: b.id,
-        batchNumber: b.fileName ? `LOTE-${b.fileName.replace(/\.csv|\.manual/g, "").slice(0, 16)}` : `LOTE-${b.id?.slice(0, 8) || "NOVO"}`,
-        fileName: b.fileName || "Produtos.csv",
-        totalItems: b.received || 0,
-        processedItems: b.changed || 0,
-        successItems: Math.max(0, (b.received || 0) - (b.dispatchFailed || 0) - (b.errors?.length || 0)),
-        errorItems: (b.dispatchFailed || 0) + (b.errors?.length || 0),
-        status: b.errors?.length > 0 || b.dispatchFailed > 0 ? "ERRO" : "CONCLUIDO",
-        startedAtUtc: b.createdAt || new Date().toISOString(),
-        finishedAtUtc: b.createdAt || new Date().toISOString(),
-        channelName: b.integrationName || b.channelName || b.channel || "Esteira de Produtos",
-        errorLog: b.errors || [],
-        version: 1,
-        received: b.received,
-        changed: b.changed,
-        dispatched: b.dispatched,
-        dispatchFailed: b.dispatchFailed,
-      }));
+      return rawItems.map((b: any) => {
+        const errorList = Array.isArray(b.errors)
+          ? b.errors.filter(Boolean)
+          : typeof b.errors === "string" && b.errors.trim()
+          ? [b.errors.trim()]
+          : [];
+        const dispatchFailed = Number(b.dispatchFailed || 0);
+        const received = Number(b.received || b.totalItems || 0);
+        const changed = Number(b.changed || b.processedItems || 0);
+        const errorCount = dispatchFailed + errorList.length;
+        const successCount = Math.max(0, received - errorCount);
+
+        let status: "CONCLUIDO" | "PROCESSANDO" | "PENDENTE" | "ERRO" = "CONCLUIDO";
+        const rawStatus = b.status !== undefined && b.status !== null ? String(b.status).toUpperCase() : "";
+        if (rawStatus === "ERRO" || rawStatus === "ERROR" || rawStatus === "6" || (errorCount > 0 && !["CONCLUIDO", "0", "SUCCESS"].includes(rawStatus))) {
+          status = "ERRO";
+        } else if (rawStatus === "PROCESSANDO" || rawStatus === "PROCESSING") {
+          status = "PROCESSANDO";
+        } else if (rawStatus === "PENDENTE" || rawStatus === "PENDING" || rawStatus === "1") {
+          status = "PENDENTE";
+        } else {
+          status = "CONCLUIDO";
+        }
+
+        return {
+          id: b.id,
+          batchNumber: b.fileName ? `LOTE-${b.fileName.replace(/\.csv|\.manual/g, "").slice(0, 16)}` : `LOTE-${b.id?.slice(0, 8) || "NOVO"}`,
+          fileName: b.fileName || "Produtos.csv",
+          totalItems: received,
+          processedItems: changed,
+          successItems: successCount,
+          errorItems: errorCount,
+          status,
+          startedAtUtc: b.createdAt || new Date().toISOString(),
+          finishedAtUtc: b.createdAt || new Date().toISOString(),
+          channelName: b.integrationName || b.channelName || b.channel || "Esteira de Produtos",
+          errorLog: errorList,
+          version: 1,
+          received,
+          changed,
+          dispatched: b.dispatched,
+          dispatchFailed,
+        };
+      });
     }
   } catch (error) {
     console.error("Erro ao carregar lotes de produtos da API:", toErrorMessage(error));
@@ -363,24 +388,47 @@ export async function fetchProductBatchById(batchId: string): Promise<{ batch: P
       const rawItems = Array.isArray(data.items) ? data.items : [];
       const fileName = batchObj.fileName || "Produtos.csv";
 
+      const errorList = Array.isArray(batchObj.errors)
+        ? batchObj.errors.filter(Boolean)
+        : typeof batchObj.errors === "string" && batchObj.errors.trim()
+        ? [batchObj.errors.trim()]
+        : [];
+      const dispatchFailed = Number(batchObj.dispatchFailed || 0);
+      const received = Number(batchObj.received || rawItems.length || 0);
+      const changed = Number(batchObj.changed || 0);
+      const errorCount = dispatchFailed + errorList.length;
+      const successCount = Math.max(0, received - errorCount);
+
+      let batchStatus: "CONCLUIDO" | "PROCESSANDO" | "PENDENTE" | "ERRO" = "CONCLUIDO";
+      const rawBatchStatus = batchObj.status !== undefined && batchObj.status !== null ? String(batchObj.status).toUpperCase() : "";
+      if (rawBatchStatus === "ERRO" || rawBatchStatus === "ERROR" || rawBatchStatus === "6" || (errorCount > 0 && !["CONCLUIDO", "0", "SUCCESS"].includes(rawBatchStatus))) {
+        batchStatus = "ERRO";
+      } else if (rawBatchStatus === "PROCESSANDO" || rawBatchStatus === "PROCESSING") {
+        batchStatus = "PROCESSANDO";
+      } else if (rawBatchStatus === "PENDENTE" || rawBatchStatus === "PENDING" || rawBatchStatus === "1") {
+        batchStatus = "PENDENTE";
+      } else {
+        batchStatus = "CONCLUIDO";
+      }
+
       const batchDto: ProductBatchDto = {
         id: batchObj.id || batchId,
         batchNumber: fileName,
         fileName,
-        totalItems: batchObj.received || rawItems.length || 0,
-        processedItems: batchObj.changed || 0,
-        successItems: Math.max(0, (batchObj.received || rawItems.length || 0) - (batchObj.dispatchFailed || 0) - (batchObj.errors?.length || 0)),
-        errorItems: (batchObj.dispatchFailed || 0) + (batchObj.errors?.length || 0),
-        status: batchObj.errors?.length > 0 || batchObj.dispatchFailed > 0 ? "ERRO" : "CONCLUIDO",
+        totalItems: received,
+        processedItems: changed,
+        successItems: successCount,
+        errorItems: errorCount,
+        status: batchStatus,
         startedAtUtc: batchObj.createdAt || new Date().toISOString(),
         finishedAtUtc: batchObj.createdAt || new Date().toISOString(),
         channelName: batchObj.integrationName || batchObj.channelName || "Esteira",
-        errorLog: batchObj.errors || [],
+        errorLog: errorList,
         version: 1,
-        received: batchObj.received,
-        changed: batchObj.changed,
+        received,
+        changed,
         dispatched: batchObj.dispatched,
-        dispatchFailed: batchObj.dispatchFailed,
+        dispatchFailed,
       };
 
       const mappedItems: ProductChangeDto[] = rawItems.map((item: any) => {
@@ -462,19 +510,50 @@ export async function fetchProductBatchById(batchId: string): Promise<{ batch: P
           }
         }
 
-        const statusMap: Record<number, string> = {
-          0: "Sem alteração",
-          1: "Pendente",
-          2: "Aprovado",
-          3: "Rejeitado",
-          4: "Despachando",
-          5: "Despachado",
-          6: "Erro",
-          7: "Ignorado",
+        const rawItemStatus = item.status !== undefined && item.status !== null ? item.status : item.Status;
+        const diffList = Array.isArray(item.diff) ? item.diff : [];
+        const hasDiff = diffList.length > 0;
+
+        const statusMap: Record<string, string> = {
+          "0": "Sem alteração",
+          "1": "Pendente",
+          "2": "Aprovado",
+          "3": "Rejeitado",
+          "4": "Despachando",
+          "5": "Despachado",
+          "6": "Erro",
+          "7": "Ignorado",
+          "SemAlteracao": "Sem alteração",
+          "Sem alteração": "Sem alteração",
+          "Unchanged": "Sem alteração",
+          "Pendente": "Pendente",
+          "Pending": "Pendente",
+          "Aprovado": "Aprovado",
+          "Approved": "Aprovado",
+          "Rejeitado": "Rejeitado",
+          "Rejected": "Rejeitado",
+          "Despachando": "Despachando",
+          "Dispatching": "Despachando",
+          "Despachado": "Despachado",
+          "Dispatched": "Despachado",
+          "Erro": "Erro",
+          "Error": "Erro",
+          "Ignorado": "Ignorado",
+          "Ignored": "Ignorado",
         };
 
-        const statusLabel = statusMap[item.status] || (item.diff?.length > 0 ? "Alterado" : "Sem alteração");
-        const reviewLabel = item.status === 7 ? "Bloqueada" : item.requiresReview ? "Manual" : "Automática";
+        let statusLabel = "Sem alteração";
+        if (rawItemStatus !== undefined && rawItemStatus !== null && statusMap[String(rawItemStatus)] !== undefined) {
+          statusLabel = statusMap[String(rawItemStatus)];
+        } else if (hasDiff) {
+          statusLabel = item.requiresReview ? "Pendente" : "Alterado";
+        } else {
+          statusLabel = "Sem alteração";
+        }
+
+        const requiresReview = statusLabel === "Sem alteração" ? false : Boolean(item.requiresReview ?? (statusLabel === "Pendente"));
+        const reviewLabel = rawItemStatus === 7 || statusLabel === "Ignorado" ? "Bloqueada" : requiresReview ? "Manual" : "Automática";
+        const numericStatus = typeof rawItemStatus === "number" ? rawItemStatus : (rawItemStatus === "0" || statusLabel === "Sem alteração" ? 0 : 1);
 
         const reference = [
           item.reference,
@@ -548,7 +627,7 @@ export async function fetchProductBatchById(batchId: string): Promise<{ batch: P
           customerId: item.customerId || batchObj.customerId,
           sku,
           reference,
-          status: item.status ?? 0,
+          status: numericStatus,
           statusLabel,
           reviewLabel,
           title,
@@ -556,10 +635,10 @@ export async function fetchProductBatchById(batchId: string): Promise<{ batch: P
           price,
           stock,
           dispatchTarget: item.dispatchTargets?.join(", ") || "Shopify",
-          requiresReview: item.requiresReview ?? false,
+          requiresReview,
           errorMessage: item.lastError || "",
           rawJson: item.incomingSnapshot || item.savedSnapshot || item,
-          diff: Array.isArray(item.diff) ? item.diff : [],
+          diff: diffList,
           savedSnapshot: item.savedSnapshot,
           incomingSnapshot: item.incomingSnapshot,
           variationsCount: parsedVariations.length || 1,
@@ -685,29 +764,61 @@ export async function fetchProductChanges(customerId: string, reference?: string
         const variations = extractVariationsList(c, shared);
         const stock = variations.reduce((acc: number, v: any) => acc + (parseInt(String(v.estoque || v.Estoque || v.stock || v.quantidade || "0"), 10) || 0), 0) || 0;
 
-        const statusLabels: Record<number, ProductChangeDto["statusLabel"]> = {
-          1: "Pendente",
-          2: "Aprovado",
-          3: "Rejeitado",
-          4: "Despachando",
-          5: "Despachado",
-          6: "Erro",
-          7: "Ignorado",
+        const rawStatus = c.status !== undefined && c.status !== null ? c.status : c.Status;
+        const statusMap: Record<string, ProductChangeDto["statusLabel"]> = {
+          "0": "Sem alteração",
+          "1": "Pendente",
+          "2": "Aprovado",
+          "3": "Rejeitado",
+          "4": "Despachando",
+          "5": "Despachado",
+          "6": "Erro",
+          "7": "Ignorado",
+          "SemAlteracao": "Sem alteração",
+          "Sem alteração": "Sem alteração",
+          "Unchanged": "Sem alteração",
+          "Pendente": "Pendente",
+          "Pending": "Pendente",
+          "Aprovado": "Aprovado",
+          "Approved": "Aprovado",
+          "Rejeitado": "Rejeitado",
+          "Rejected": "Rejeitado",
+          "Despachando": "Despachando",
+          "Dispatching": "Despachando",
+          "Despachado": "Despachado",
+          "Dispatched": "Despachado",
+          "Erro": "Erro",
+          "Error": "Erro",
+          "Ignorado": "Ignorado",
+          "Ignored": "Ignorado",
         };
+
+        const hasDiff = Array.isArray(c.diff) && c.diff.length > 0;
+        let statusLabel: ProductChangeDto["statusLabel"] = "Sem alteração";
+        if (rawStatus !== undefined && rawStatus !== null && statusMap[String(rawStatus)] !== undefined) {
+          statusLabel = statusMap[String(rawStatus)] as ProductChangeDto["statusLabel"];
+        } else if (hasDiff) {
+          statusLabel = "Pendente";
+        } else {
+          statusLabel = "Sem alteração";
+        }
+
+        const statusCode = typeof rawStatus === "number" ? rawStatus : (rawStatus === "0" || statusLabel === "Sem alteração" ? 0 : 1);
+        const requiresReview = statusLabel === "Sem alteração" ? false : Boolean(c.requiresReview ?? (statusCode === 1));
 
         return {
           id: c.id || c._id || ref,
           customerId: c.customerId || c.CustomerId || customerId,
           sku: ref,
           reference: ref,
-          status: c.status || c.Status || 1,
-          statusLabel: statusLabels[c.status || c.Status] || "Pendente",
+          status: statusCode,
+          statusLabel,
           title,
           category: cleanEncodingText(shared.nomeCategoria || shared.NomeCategoria || shared.categoria || shared.Categoria || "Geral"),
           price,
           stock,
           dispatchTarget: c.dispatchTargets?.join(", ") || c.DispatchTargets?.join(", ") || c.integrationName || "Esteira",
-          requiresReview: (c.status || c.Status) === 1,
+          requiresReview,
           errorMessage: c.lastError || c.LastError,
           rawJson: c.snapshot || c.Snapshot || c.rawSnapshot || c,
           createdAtUtc: c.createdAtUtc || c.CreatedAt || new Date().toISOString(),
