@@ -4,20 +4,49 @@ import { getOrderBackendStatusLabel, getOrderImportStatusLabel } from "../../sta
 import type { CustomerOrderDto } from "../types";
 
 /**
- * Consulta de Pedidos Reais do Hub de Produção
+ * Deduplica a lista de pedidos mantendo a ocorrência mais recente por marketplaceOrderId ou id
+ */
+export function deduplicateOrders(orders: CustomerOrderDto[]): CustomerOrderDto[] {
+  if (!Array.isArray(orders)) return [];
+  const map = new Map<string, CustomerOrderDto>();
+
+  for (const o of orders) {
+    const rawKey = o.marketplaceOrderId || o.orderId || o.id;
+    const key = (rawKey ? String(rawKey) : "").trim().toLowerCase();
+    if (!key) continue;
+
+    if (!map.has(key)) {
+      map.set(key, o);
+    } else {
+      const existing = map.get(key)!;
+      const existingDate = new Date(existing.updatedAtUtc || existing.createdAtUtc || 0).getTime();
+      const newDate = new Date(o.updatedAtUtc || o.createdAtUtc || 0).getTime();
+      if (newDate >= existingDate) {
+        map.set(key, o);
+      }
+    }
+  }
+
+  return Array.from(map.values());
+}
+
+/**
+ * Consulta de Pedidos Reais do Hub de Produção com deduplicação nativa
  */
 export async function fetchCustomerOrders(customerId: string): Promise<CustomerOrderDto[]> {
   try {
     const { data } = await http.get(`/api/admin/orders/${encodeURIComponent(customerId)}/get-json`);
     if (Array.isArray(data)) {
-      return data.map((o: any) => parseOrderFromApi(o));
+      const parsed = data.map((o: any) => parseOrderFromApi(o));
+      return deduplicateOrders(parsed);
     }
   } catch (error) {
     logger.warn("Falha ao buscar pedidos em /api/admin/orders, tentando rota /api/order/get-json:", toErrorMessage(error));
     try {
       const { data } = await http.get("/api/order/get-json");
       if (Array.isArray(data)) {
-        return data.map((o: any) => parseOrderFromApi(o));
+        const parsed = data.map((o: any) => parseOrderFromApi(o));
+        return deduplicateOrders(parsed);
       }
     } catch (fallbackError) {
       logger.error("Erro ao buscar pedidos na API de produção:", toErrorMessage(fallbackError));

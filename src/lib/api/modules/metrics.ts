@@ -7,11 +7,86 @@ import type {
   SalesEvolutionPoint,
 } from "../types";
 import { cleanEncodingText } from "./pipeline";
+import { deduplicateOrders } from "./orders";
+import { normalizeOrderBackendStatus } from "../../status";
 
 /**
- * Calcula dinamicamente todas as métricas de vendas (Pergunta 1, 2 e 4) a partir dos pedidos reais da API
+ * Validador estrito de pedidos com pagamento confirmado/efetivado.
+ * Exclui pedidos cancelados, boletos vencidos, aguardando pagamento
+ * e pedidos em análise (status 5 / "pedido_analise"), conforme regra de negócio.
  */
-export function calculateSalesMetrics(orders: CustomerOrderDto[], catalogItems?: CatalogItemDto[]) {
+export function isPaidOrder(order: CustomerOrderDto): boolean {
+  if (!order) return false;
+
+  const rawStatus = order.statusOrder;
+  const statusLabel = (order.status || "").toLowerCase().trim();
+
+  // 1. Verificação por código numérico ou enum do backend
+  const statusNum = normalizeOrderBackendStatus(rawStatus);
+  if (statusNum !== null) {
+    // Rejeita explicitamente:
+    // 1: pedido_recebido (aguardando pagamento)
+    // 2: aguardando_pagamento (boleto/pix pendente)
+    // 4: pagamento_cancelado
+    // 5: pedido_analise (desconsiderado por instrução expressa)
+    // 10: pedido_cancelado
+    // 11: pedido_devolvido
+    // 12: excecao_transporte
+    // 13: boleto_vencido
+    // 14: cancelamento_solicitado
+    if ([1, 2, 4, 5, 10, 11, 12, 13, 14].includes(statusNum)) {
+      return false;
+    }
+
+    // Aceita status de faturamento/pagamento confirmado:
+    // 3: pagamento_recebido
+    // 6: pedido_separacao
+    // 7: pedido_faturado
+    // 8: pedido_enviado
+    // 9: pedido_entregue
+    if ([3, 6, 7, 8, 9].includes(statusNum)) {
+      return true;
+    }
+  }
+
+  // 2. Verificação textual complementar (para payloads legados ou texto livre)
+  if (
+    statusLabel.includes("cancelad") ||
+    statusLabel.includes("aguardando") ||
+    statusLabel.includes("análise") ||
+    statusLabel.includes("analise") ||
+    statusLabel.includes("vencid") ||
+    statusLabel.includes("devolvid") ||
+    statusLabel.includes("estorn") ||
+    statusLabel.includes("recusad") ||
+    statusLabel.includes("falha")
+  ) {
+    return false;
+  }
+
+  // Se o rótulo textual indicar pagamento confirmado
+  if (
+    statusLabel.includes("pago") ||
+    statusLabel.includes("aprovad") ||
+    statusLabel.includes("faturad") ||
+    statusLabel.includes("enviad") ||
+    statusLabel.includes("entregue") ||
+    statusLabel.includes("separa") ||
+    statusLabel.includes("despachad") ||
+    statusLabel.includes("concluid")
+  ) {
+    return true;
+  }
+
+  // Por segurança financeira, status não identificados como pagos não entram no faturamento
+  return false;
+}
+
+/**
+ * Calcula dinamicamente todas as métricas de vendas a partir dos pedidos reais da API,
+ * aplicando deduplicação e filtro estrito de pedidos pagos.
+ */
+export function calculateSalesMetrics(rawOrders: CustomerOrderDto[], catalogItems?: CatalogItemDto[]) {
   const catalogMap = new Map<string, CatalogItemDto>();
   if (catalogItems && Array.isArray(catalogItems)) {
     catalogItems.forEach((c) => {
@@ -45,9 +120,33 @@ export function calculateSalesMetrics(orders: CustomerOrderDto[], catalogItems?:
     });
   }
 
-  const totalRevenue = orders.reduce((acc, o) => acc + (o.totalAmount || 0), 0);
-  const totalOrders = orders.length;
-  const totalItemsSold = orders.reduce((acc, o) => acc + (o.itemsCount || o.items?.length || 1), 0);
+  // 1. Deduplica lista de pedidos
+  const deduplicatedOrders = deduplicateOrders(rawOrders);
+
+  // 2. Filtra exclusivamente pedidos com pagamento confirmado (sem cancelados e sem análise status 5)
+  const validOrders = deduplicatedOrders.filter(isPaidOrder);
+
+  // 3. Saneamento financeiro: protege contra NaN, negativos e valores infinitos
+  const totalRevenue = validOrders.reduce((acc, o) => {
+    const val = typeof o.totalAmount === "number" && !isNaN(o.totalAmount) && o.totalAmount > 0 ? o.totalAmount : 0;
+    return acc + val;
+  }, 0);
+
+  const totalOrders = validOrders.length;
+
+  const totalItemsSold = validOrders.reduce((acc, o) => {
+    let countInOrder = 0;
+    if (Array.isArray(o.items) && o.items.length > 0) {
+      countInOrder = o.items.reduce((itemAcc, item) => {
+        const q = typeof item.quantity === "number" && !isNaN(item.quantity) && item.quantity > 0 ? item.quantity : 1;
+        return itemAcc + q;
+      }, 0);
+    } else {
+      countInOrder = typeof o.itemsCount === "number" && !isNaN(o.itemsCount) && o.itemsCount > 0 ? o.itemsCount : 1;
+    }
+    return acc + countInOrder;
+  }, 0);
+
   const averageTicket = totalOrders > 0 ? totalRevenue / totalOrders : 0;
 
   const kpis: SalesOverviewKPIs = {
@@ -73,7 +172,7 @@ export function calculateSalesMetrics(orders: CustomerOrderDto[], catalogItems?:
     },
   };
 
-  // Ranking Top Produtos Agrupados por Produto com Variação Campeã
+  // Ranking Top Produtos apenas a partir dos pedidos pagos válidos
   interface ProductAgg {
     reference: string;
     sku: string;
@@ -87,7 +186,7 @@ export function calculateSalesMetrics(orders: CustomerOrderDto[], catalogItems?:
 
   const productMap = new Map<string, ProductAgg>();
 
-  orders.forEach((o) => {
+  validOrders.forEach((o) => {
     o.items?.forEach((item) => {
       const refKey = (item.reference || "").toLowerCase().trim();
       const skuKey = (item.sku || "").toLowerCase().trim();
@@ -144,36 +243,20 @@ export function calculateSalesMetrics(orders: CustomerOrderDto[], catalogItems?:
         category: resolvedCategory,
         units: 0,
         revenue: 0,
-        price: item.unitPrice || catItem?.price || 0,
+        price: 0,
         variations: new Map(),
       };
 
-      const itemUnits = item.quantity || 1;
-      const itemRev = item.totalPrice || (item.unitPrice * itemUnits) || 0;
+      const itemUnits = typeof item.quantity === "number" && !isNaN(item.quantity) && item.quantity > 0 ? item.quantity : 1;
+      const itemRev = typeof item.totalPrice === "number" && !isNaN(item.totalPrice) && item.totalPrice > 0
+        ? item.totalPrice
+        : (typeof item.unitPrice === "number" && !isNaN(item.unitPrice) && item.unitPrice > 0 ? item.unitPrice * itemUnits : 0);
 
       existing.units += itemUnits;
       existing.revenue += itemRev;
+      existing.price = existing.revenue / (existing.units || 1);
 
-      // Se o título atual era apenas o código/referência mas encontramos um título mais rico
-      if (
-        (!isValidTitle(existing.title) || existing.title.startsWith("Produto ")) &&
-        isValidTitle(resolvedTitle)
-      ) {
-        existing.title = resolvedTitle;
-      }
-
-      // Rastreia variações vendidas deste produto
-      let varName = cleanEncodingText(item.variation || [item.color, item.size].filter(Boolean).join(" - "));
-      if (!varName || varName === "Padrão") {
-        const matchingVar = catItem?.variations?.find((v) => v.sku.toLowerCase() === skuKey || v.sku.toLowerCase() === cleanSkuKey);
-        if (matchingVar) {
-          varName = cleanEncodingText(matchingVar.variationName || [matchingVar.color, matchingVar.size].filter(Boolean).join(" - ") || matchingVar.sku);
-        }
-      }
-      if (!varName) {
-        varName = item.sku;
-      }
-
+      const varName = item.variation || "Padrão";
       const existingVar = existing.variations.get(varName) || {
         name: varName,
         sku: item.sku,
@@ -192,7 +275,6 @@ export function calculateSalesMetrics(orders: CustomerOrderDto[], catalogItems?:
     .sort((a, b) => b.revenue - a.revenue)
     .slice(0, 5)
     .map((p, idx) => {
-      // Identifica a variação mais vendida
       const sortedVars = Array.from(p.variations.values()).sort((a, b) => b.units - a.units);
       const topVar = sortedVars[0];
 
@@ -213,7 +295,7 @@ export function calculateSalesMetrics(orders: CustomerOrderDto[], catalogItems?:
       };
     });
 
-  // Canais de Venda Dinâmicos a partir dos pedidos reais
+  // Canais de Venda exclusivamente a partir dos pedidos pagos válidos
   const channelMap = new Map<string, { name: string; revenue: number; orders: number; color: string }>();
 
   const channelColors: Record<string, string> = {
@@ -227,16 +309,17 @@ export function calculateSalesMetrics(orders: CustomerOrderDto[], catalogItems?:
     direct: "#8B5CF6",
   };
 
-  orders.forEach((o) => {
-    const key = o.channel || "direct";
+  validOrders.forEach((o) => {
+    const key = (o.channel || "direct").toLowerCase();
     const name = o.channelName || "Canal Direto";
     const existing = channelMap.get(key) || {
       name,
       revenue: 0,
       orders: 0,
-      color: channelColors[key.toLowerCase()] || "#8B5CF6",
+      color: channelColors[key] || "#8B5CF6",
     };
-    existing.revenue += o.totalAmount || 0;
+    const orderVal = typeof o.totalAmount === "number" && !isNaN(o.totalAmount) && o.totalAmount > 0 ? o.totalAmount : 0;
+    existing.revenue += orderVal;
     existing.orders += 1;
     channelMap.set(key, existing);
   });
@@ -246,7 +329,7 @@ export function calculateSalesMetrics(orders: CustomerOrderDto[], catalogItems?:
     name: data.name,
     revenue: data.revenue,
     orders: data.orders,
-    sharePercent: totalRevenue > 0 ? Math.round((data.revenue / totalRevenue) * 100) : 0,
+    sharePercent: totalRevenue > 0 ? Math.min(100, Math.round((data.revenue / totalRevenue) * 100)) : 0,
     color: data.color,
   }));
 
@@ -254,10 +337,14 @@ export function calculateSalesMetrics(orders: CustomerOrderDto[], catalogItems?:
 }
 
 /**
- * Gera pontos de evolução histórica dinâmica a partir dos pedidos reais
+ * Gera pontos de evolução histórica dinâmica a partir de pedidos pagos válidos
  */
-export function generateEvolutionPoints(orders: CustomerOrderDto[], period: string): SalesEvolutionPoint[] {
-  const totalRevenue = orders.reduce((acc, o) => acc + (o.totalAmount || 0), 0);
+export function generateEvolutionPoints(rawOrders: CustomerOrderDto[], period: string): SalesEvolutionPoint[] {
+  const orders = deduplicateOrders(rawOrders).filter(isPaidOrder);
+  const totalRevenue = orders.reduce((acc, o) => {
+    const val = typeof o.totalAmount === "number" && !isNaN(o.totalAmount) && o.totalAmount > 0 ? o.totalAmount : 0;
+    return acc + val;
+  }, 0);
   const totalOrders = orders.length;
 
   if (period === "hoje") {
