@@ -578,6 +578,66 @@ export async function fetchProductBatchById(batchId: string): Promise<{ batch: P
 }
 
 /**
+ * Sanitiza textos com erros de codificação de caracteres (ex: 200c -> 200°C)
+ */
+export function cleanEncodingText(text?: string | null): string {
+  if (!text) return "";
+  return String(text)
+    .replace(/[\uFFFD\u0080-\u009F\uFFFE\uFFFF]\s*c/gi, "°C")
+    .replace(/[\uFFFD\u0080-\u009F\uFFFE\uFFFF]/g, "°")
+    .replace(/\?\s*c\b/gi, "°C")
+    .replace(/\b([0-9]+)\s*c\b/gi, "$1°C")
+    .replace(/\s+/g, " ")
+    .trim();
+}
+
+/**
+ * Helper para extrair o snapshot compartilhado (Shared) de qualquer formato retornado pela API/MongoDB
+ */
+function extractSharedSnapshot(p: any): any {
+  if (!p) return {};
+  return (
+    p.effectiveSharedSnapshot ||
+    p.publishedSharedSnapshot ||
+    p.editedSnapshot?.shared ||
+    p.EditedSnapshot?.Shared ||
+    p.incomingSnapshot?.shared ||
+    p.IncomingSnapshot?.Shared ||
+    p.snapshot?.shared ||
+    p.Snapshot?.Shared ||
+    p.originalSnapshot?.shared ||
+    p.OriginalSnapshot?.Shared ||
+    p.rawSnapshot?.shared ||
+    p.rawSnapshot?.Shared ||
+    p.Shared ||
+    p.shared ||
+    {}
+  );
+}
+
+/**
+ * Helper para extrair variações de qualquer formato de produto
+ */
+function extractVariationsList(p: any, sharedObj?: any): any[] {
+  if (!p) return [];
+  const list =
+    p.effectiveVariations ||
+    p.editedSnapshot?.variations ||
+    p.EditedSnapshot?.Variations ||
+    p.incomingSnapshot?.variations ||
+    p.IncomingSnapshot?.Variations ||
+    p.snapshot?.variations ||
+    p.Snapshot?.Variations ||
+    p.originalSnapshot?.variations ||
+    p.OriginalSnapshot?.Variations ||
+    p.rawSnapshot?.variations ||
+    p.variations ||
+    p.Variations ||
+    [];
+  return Array.isArray(list) ? list : [];
+}
+
+/**
  * Consulta Alterações de Produtos na Esteira (Product Changes)
  */
 export async function fetchProductChanges(customerId: string, reference?: string): Promise<ProductChangeDto[]> {
@@ -605,11 +665,25 @@ export async function fetchProductChanges(customerId: string, reference?: string
 
     if (Array.isArray(items) && items.length > 0) {
       return items.map((c: any) => {
-        const shared = c.snapshot?.shared || c.rawSnapshot?.shared || c.effectiveSharedSnapshot || {};
-        const title = shared.descricaoProduto || shared.descricao || shared.nome || shared.title || `Produto ${c.reference || c.sku || ""}`;
-        const price = parseFloat(String(shared.precoVenda || shared.preco || shared.price || "0").replace(",", ".")) || 0;
-        const variations = c.snapshot?.variations || c.rawSnapshot?.variations || c.effectiveVariations || [];
-        const stock = variations.reduce((acc: number, v: any) => acc + (parseInt(String(v.estoque || v.stock || v.quantidade || "0"), 10) || 0), 0) || 0;
+        const shared = extractSharedSnapshot(c);
+        const ref = c.reference || c.Reference || c.sku || c.Sku || c.id || "";
+        const rawTitle =
+          shared.descricaoProduto ||
+          shared.DescricaoProduto ||
+          shared.descricao ||
+          shared.Descricao ||
+          shared.nome ||
+          shared.Nome ||
+          shared.title ||
+          shared.Title ||
+          c.title ||
+          c.Title ||
+          `Produto ${ref || "Sem Título"}`;
+
+        const title = cleanEncodingText(rawTitle);
+        const price = parseFloat(String(shared.precoVenda || shared.PrecoVenda || shared.preco || shared.Preco || shared.price || "0").replace(",", ".")) || 0;
+        const variations = extractVariationsList(c, shared);
+        const stock = variations.reduce((acc: number, v: any) => acc + (parseInt(String(v.estoque || v.Estoque || v.stock || v.quantidade || "0"), 10) || 0), 0) || 0;
 
         const statusLabels: Record<number, ProductChangeDto["statusLabel"]> = {
           1: "Pendente",
@@ -622,21 +696,21 @@ export async function fetchProductChanges(customerId: string, reference?: string
         };
 
         return {
-          id: c.id || c.reference,
-          customerId: c.customerId || customerId,
-          sku: c.reference || c.sku,
-          reference: c.reference || c.sku,
-          status: c.status || 1,
-          statusLabel: statusLabels[c.status] || "Pendente",
+          id: c.id || c._id || ref,
+          customerId: c.customerId || c.CustomerId || customerId,
+          sku: ref,
+          reference: ref,
+          status: c.status || c.Status || 1,
+          statusLabel: statusLabels[c.status || c.Status] || "Pendente",
           title,
-          category: shared.nomeCategoria || shared.categoria || "Geral",
+          category: cleanEncodingText(shared.nomeCategoria || shared.NomeCategoria || shared.categoria || shared.Categoria || "Geral"),
           price,
           stock,
-          dispatchTarget: c.dispatchTargets?.join(", ") || c.integrationName || "Esteira",
-          requiresReview: c.status === 1,
-          errorMessage: c.lastError,
-          rawJson: c.snapshot || c.rawSnapshot || c,
-          createdAtUtc: c.createdAtUtc || c.createdAt || new Date().toISOString(),
+          dispatchTarget: c.dispatchTargets?.join(", ") || c.DispatchTargets?.join(", ") || c.integrationName || "Esteira",
+          requiresReview: (c.status || c.Status) === 1,
+          errorMessage: c.lastError || c.LastError,
+          rawJson: c.snapshot || c.Snapshot || c.rawSnapshot || c,
+          createdAtUtc: c.createdAtUtc || c.CreatedAt || new Date().toISOString(),
         };
       });
     }
@@ -723,13 +797,30 @@ export async function fetchProductCatalog(customerId: string, search?: string): 
 
     if (Array.isArray(items) && items.length > 0) {
       return items.map((p: any) => {
-        const shared = p.effectiveSharedSnapshot || p.publishedSharedSnapshot || p.snapshot?.shared || {};
-        const reference = p.reference || p.sku || p.id;
-        const title = shared.descricaoProduto || shared.descricao || shared.nome || `Produto ${reference || "Sem Título"}`;
-        const price = parseFloat(String(shared.precoVenda || shared.preco || shared.price || "0").replace(",", ".")) || 0;
-        const costPrice = parseFloat(String(shared.precoCusto || shared.custo || "0").replace(",", ".")) || 0;
-        const rawVariations = p.effectiveVariations || p.variations || [];
-        const stock = rawVariations.reduce((acc: number, v: any) => acc + (parseInt(String(v.estoque || v.stock || "0"), 10) || 0), 0) || 0;
+        const shared = extractSharedSnapshot(p);
+        const reference = p.reference || p.Reference || p.sku || p.Sku || p.id || p._id;
+        const rawTitle =
+          shared.descricaoProduto ||
+          shared.DescricaoProduto ||
+          shared.descricao ||
+          shared.Descricao ||
+          shared.nome ||
+          shared.Nome ||
+          shared.name ||
+          shared.Name ||
+          shared.title ||
+          shared.Title ||
+          p.title ||
+          p.Title ||
+          p.name ||
+          p.Name ||
+          `Produto ${reference || "Sem Título"}`;
+
+        const title = cleanEncodingText(rawTitle);
+        const price = parseFloat(String(shared.precoVenda || shared.PrecoVenda || shared.preco || shared.Preco || shared.price || "0").replace(",", ".")) || 0;
+        const costPrice = parseFloat(String(shared.precoCusto || shared.PrecoCusto || shared.custo || "0").replace(",", ".")) || 0;
+        const rawVariations = extractVariationsList(p, shared);
+        const stock = rawVariations.reduce((acc: number, v: any) => acc + (parseInt(String(v.estoque || v.Estoque || v.stock || "0"), 10) || 0), 0) || 0;
 
         const variations = rawVariations.map((v: any) => {
           // Extrai atributos suportando variationAttributes, propriedades diretas e dicionários
@@ -739,11 +830,12 @@ export async function fetchProductCatalog(customerId: string, search?: string): 
                 return String(v[k]).trim();
               }
             }
-            if (Array.isArray(v.variationAttributes)) {
+            if (Array.isArray(v.variationAttributes || v.VariationAttributes)) {
+              const vAttrs = v.variationAttributes || v.VariationAttributes;
               for (const k of keys) {
                 const normK = k.toLowerCase().replace(/[^a-z0-9]/g, "");
-                const found = v.variationAttributes.find((attr: any) => {
-                  const attrKey = (attr.key || attr.nome || attr.Key || "").toLowerCase().replace(/[^a-z0-9]/g, "");
+                const found = vAttrs.find((attr: any) => {
+                  const attrKey = (attr.key || attr.nome || attr.Key || attr.Nome || "").toLowerCase().replace(/[^a-z0-9]/g, "");
                   return attrKey === normK && attr.value !== undefined && attr.value !== null && String(attr.value).trim();
                 });
                 if (found) return String(found.value).trim();
@@ -760,7 +852,7 @@ export async function fetchProductCatalog(customerId: string, search?: string): 
           const size = getAttr(["tamanho", "size", "grade", "tam"]);
           const color = getAttr(["nomeCor", "nomeDaCor", "descricaoCor", "cor", "color"]);
           const colorCode = getAttr(["codigoCor", "codigoDaCor", "codCor", "codigo_cor", "cor"]);
-          const barcode = getAttr(["codigoBarras", "codigoDeBarras", "ean", "gtin", "barcode", "codBarras"]) || v.codigoBarras || v.ean || "";
+          const barcode = getAttr(["codigoBarras", "codigoDeBarras", "ean", "gtin", "barcode", "codBarras"]) || v.codigoBarras || v.CodigoBarras || v.ean || "";
 
           // Formata nome amigável da variação (ex: "Marron - PP" ou "PP - 20")
           const varName =
@@ -768,45 +860,45 @@ export async function fetchProductCatalog(customerId: string, search?: string): 
               ? `${color} - ${size}`
               : (size && colorCode)
               ? `${size} - ${colorCode}`
-              : [color || colorCode, size].filter(Boolean).join(" - ") || v.descricao || v.variationName || "Padrão";
+              : [color || colorCode, size].filter(Boolean).join(" - ") || v.descricao || v.Descricao || v.variationName || v.VariationName || "Padrão";
 
           return {
-            sku: v.sku || reference,
-            variationName: varName,
-            color,
+            sku: v.sku || v.Sku || reference,
+            variationName: cleanEncodingText(varName),
+            color: cleanEncodingText(color),
             colorCode: colorCode || color,
-            size,
+            size: cleanEncodingText(size),
             barcode,
-            stock: parseInt(String(v.estoque || v.stock || "0"), 10) || 0,
-            price: parseFloat(String(v.precoVenda || v.preco || price || "0").replace(",", ".")) || price,
-            costPrice: parseFloat(String(v.precoCusto || v.custo || costPrice || "0").replace(",", ".")) || costPrice,
-            images: Array.isArray(v.images) ? v.images.map((img: any) => img.url || img) : [],
-            rawAttributes: Array.isArray(v.variationAttributes) ? v.variationAttributes : [],
+            stock: parseInt(String(v.estoque || v.Estoque || v.stock || "0"), 10) || 0,
+            price: parseFloat(String(v.precoVenda || v.PrecoVenda || v.preco || price || "0").replace(",", ".")) || price,
+            costPrice: parseFloat(String(v.precoCusto || v.PrecoCusto || v.custo || costPrice || "0").replace(",", ".")) || costPrice,
+            images: Array.isArray(v.images || v.Images) ? (v.images || v.Images).map((img: any) => img.url || img.Url || img) : [],
+            rawAttributes: Array.isArray(v.variationAttributes || v.VariationAttributes) ? (v.variationAttributes || v.VariationAttributes) : [],
           };
         });
 
         return {
-          id: reference || p.id,
-          sku: reference || p.id,
-          reference: reference || p.id,
+          id: reference || p.id || p._id,
+          sku: reference || p.sku || p.id,
+          reference: reference || p.sku || p.id,
           title,
-          description: shared.descricaoLonga || shared.descricao || "",
-          category: shared.nomeCategoria || shared.categoria || "Geral",
-          brand: shared.nomeMarca || shared.marca || "",
-          manufacturerCode: shared.codigoFabricante || shared.codFabricante || "",
+          description: cleanEncodingText(shared.descricaoLonga || shared.DescricaoLonga || shared.descricao || shared.Descricao || ""),
+          category: cleanEncodingText(shared.nomeCategoria || shared.NomeCategoria || shared.categoria || shared.Categoria || "Geral"),
+          brand: cleanEncodingText(shared.nomeMarca || shared.NomeMarca || shared.marca || shared.Marca || ""),
+          manufacturerCode: shared.codigoFabricante || shared.CodigoFabricante || shared.codFabricante || "",
           costPrice,
           price,
           promotionalPrice: undefined,
           stock,
-          isActive: !p.isInactive,
-          dispatchTargets: p.dispatchTargets || ["Shopify"],
-          images: Array.isArray(p.images) ? p.images.map((img: any) => img.url || img) : [],
+          isActive: !p.isInactive && !p.IsInactive,
+          dispatchTargets: p.dispatchTargets || p.DispatchTargets || ["Shopify"],
+          images: Array.isArray(p.images || p.Images) ? (p.images || p.Images).map((img: any) => img.url || img.Url || img) : [],
           variations,
-          lastImportedAtUtc: p.lastImportedAtUtc || p.lastDispatchedAtUtc || p.updatedAtUtc || new Date().toISOString(),
+          lastImportedAtUtc: p.lastImportedAtUtc || p.LastImportedAtUtc || p.updatedAtUtc || new Date().toISOString(),
           channels: p.channels && Array.isArray(p.channels) && p.channels.length > 0 ? p.channels : [
             {
               channel: "Catálogo",
-              status: p.isInactive ? "PAUSADO" : "ATIVO",
+              status: (p.isInactive || p.IsInactive) ? "PAUSADO" : "ATIVO",
               channelSku: reference,
               lastSyncUtc: p.lastDispatchedAtUtc || p.lastImportedAtUtc || new Date().toISOString(),
             },
@@ -824,9 +916,9 @@ export async function fetchProductCatalog(customerId: string, search?: string): 
         id: c.reference || c.id,
         sku: c.reference || c.sku,
         reference: c.reference || c.sku,
-        title: c.title,
+        title: cleanEncodingText(c.title),
         description: "",
-        category: c.category || "Geral",
+        category: cleanEncodingText(c.category || "Geral"),
         brand: "",
         manufacturerCode: "",
         costPrice: 0,
@@ -1017,6 +1109,10 @@ export function calculateSalesMetrics(orders: CustomerOrderDto[], catalogItems?:
       if (c.reference) catalogMap.set(c.reference.toLowerCase().trim(), c);
       if (c.sku) catalogMap.set(c.sku.toLowerCase().trim(), c);
       if (c.id) catalogMap.set(c.id.toLowerCase().trim(), c);
+      c.variations?.forEach((v) => {
+        if (v.sku) catalogMap.set(v.sku.toLowerCase().trim(), c);
+        if (v.barcode) catalogMap.set(v.barcode.toLowerCase().trim(), c);
+      });
     });
   }
 
@@ -1069,13 +1165,27 @@ export function calculateSalesMetrics(orders: CustomerOrderDto[], catalogItems?:
       const catItem = catalogMap.get(refKey) || catalogMap.get(skuKey);
 
       const resolvedRef = item.reference || catItem?.reference || item.sku;
-      const resolvedTitle =
-        catItem?.title && catItem.title !== resolvedRef
-          ? catItem.title
-          : item.title && item.title !== resolvedRef
-          ? item.title
-          : catItem?.title || resolvedRef;
-      const resolvedCategory = catItem?.category || "Geral";
+      const rawItemTitle = cleanEncodingText(item.title);
+      const rawCatTitle = cleanEncodingText(catItem?.title);
+
+      let resolvedTitle = "";
+      if (rawCatTitle && rawCatTitle !== resolvedRef && !rawCatTitle.startsWith("Produto ")) {
+        resolvedTitle = rawCatTitle;
+      } else if (rawItemTitle && rawItemTitle !== resolvedRef && rawItemTitle !== item.sku && !rawItemTitle.startsWith("Produto ")) {
+        resolvedTitle = rawItemTitle;
+      } else if (rawCatTitle && rawCatTitle !== resolvedRef) {
+        resolvedTitle = rawCatTitle;
+      } else if (rawItemTitle && rawItemTitle !== resolvedRef) {
+        resolvedTitle = rawItemTitle;
+      } else if (catItem?.brand && catItem.brand !== "Geral") {
+        resolvedTitle = `${catItem.brand} - Ref ${resolvedRef}`;
+      } else if (catItem?.category && catItem.category !== "Geral") {
+        resolvedTitle = `${catItem.category} - Ref ${resolvedRef}`;
+      } else {
+        resolvedTitle = `Produto ${resolvedRef}`;
+      }
+
+      const resolvedCategory = cleanEncodingText(catItem?.category || "Geral");
 
       const prodKey = resolvedRef;
       const existing = productMap.get(prodKey) || {
@@ -1095,12 +1205,17 @@ export function calculateSalesMetrics(orders: CustomerOrderDto[], catalogItems?:
       existing.units += itemUnits;
       existing.revenue += itemRev;
 
+      // Se o título atual era apenas o código/referência mas encontramos um título mais rico
+      if (existing.title === `Produto ${resolvedRef}` && resolvedTitle !== `Produto ${resolvedRef}`) {
+        existing.title = resolvedTitle;
+      }
+
       // Rastreia variações vendidas deste produto
-      let varName = item.variation || [item.color, item.size].filter(Boolean).join(" - ");
+      let varName = cleanEncodingText(item.variation || [item.color, item.size].filter(Boolean).join(" - "));
       if (!varName || varName === "Padrão") {
         const matchingVar = catItem?.variations?.find((v) => v.sku.toLowerCase() === skuKey);
         if (matchingVar) {
-          varName = matchingVar.variationName || [matchingVar.color, matchingVar.size].filter(Boolean).join(" - ") || matchingVar.sku;
+          varName = cleanEncodingText(matchingVar.variationName || [matchingVar.color, matchingVar.size].filter(Boolean).join(" - ") || matchingVar.sku);
         }
       }
       if (!varName) {

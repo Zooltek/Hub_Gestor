@@ -67,10 +67,12 @@ export function TopProductsWidget({ products }: TopProductsWidgetProps) {
                     </div>
 
                     <p className="text-sm font-bold text-foreground mt-1 line-clamp-1">
-                      {championProduct.title}
+                      {championProduct.title && championProduct.title !== championProduct.reference
+                        ? championProduct.title
+                        : `Produto ${championProduct.reference || championProduct.sku}`}
                     </p>
 
-                    {championProduct.topVariation && (
+                    {championProduct.topVariation && championProduct.topVariation !== "Padrão" && championProduct.topVariation !== championProduct.reference && (
                       <div className="mt-1 flex items-center gap-1.5">
                         <Badge variant="secondary" className="text-[10px] font-semibold text-emerald-400 bg-emerald-500/10 border-emerald-500/30">
                           🔥 Variação mais vendida: {championProduct.topVariation} ({championProduct.topVariationUnits} un)
@@ -111,13 +113,15 @@ export function TopProductsWidget({ products }: TopProductsWidgetProps) {
                       </span>
                       <div className="min-w-0">
                         <p className="text-xs font-semibold text-foreground truncate">
-                          {product.title}
+                          {product.title && product.title !== product.reference
+                            ? product.title
+                            : `Produto ${product.reference || product.sku}`}
                         </p>
                         <div className="text-[11px] text-muted-foreground font-mono flex flex-wrap items-center gap-2 mt-0.5">
                           <span className="bg-muted px-1.5 py-0.2 rounded font-semibold text-foreground">
                             Ref: {product.reference || product.sku}
                           </span>
-                          {product.topVariation && (
+                          {product.topVariation && product.topVariation !== "Padrão" && product.topVariation !== product.reference && (
                             <Badge variant="outline" className="text-[10px] text-emerald-400 border-emerald-500/30">
                               Top variação: {product.topVariation} ({product.topVariationUnits} un)
                             </Badge>
