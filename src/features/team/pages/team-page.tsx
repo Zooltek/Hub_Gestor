@@ -1,5 +1,5 @@
 import { useState, useEffect } from "react";
-import { Users, UserPlus, Shield, KeyRound, Check, X, Trash2, UserCheck, UserX } from "lucide-react";
+import { Users, UserPlus, Shield, KeyRound, Check, X, Trash2, UserCheck, UserX, AlertTriangle } from "lucide-react";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -148,7 +148,18 @@ export function TeamPage() {
         </CardContent>
       </Card>
 
-      {/* Users Table */}
+      {/* Aviso de backend não integrado */}
+      <div className="flex items-start gap-3 rounded-lg border border-yellow-500/40 bg-yellow-500/10 p-4">
+        <AlertTriangle className="size-4 text-yellow-500 shrink-0 mt-0.5" />
+        <div className="text-xs">
+          <p className="font-semibold text-yellow-600 dark:text-yellow-400">Gerenciamento de equipe em implementação</p>
+          <p className="text-muted-foreground mt-0.5">
+            Criação e remoção de usuários ainda não estão integradas ao backend — as alterações são temporárias e se perdem ao recarregar a página.
+            Para gerenciamento real de usuários, utilize o painel administrativo do Hub API.
+          </p>
+        </div>
+      </div>
+
       <Card className="border-border/80">
         <CardContent className="p-0">
           <Table>

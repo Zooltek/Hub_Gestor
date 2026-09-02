@@ -16,6 +16,11 @@ interface AuthContextType {
 }
 
 const STORAGE_KEY = "hub_gerencial_auth";
+// NOTA DE SEGURANÇA: O token é armazenado em sessionStorage (escopo por aba,
+// limpo ao fechar o browser). Para máxima segurança, migrar para cookie
+// HttpOnly; Secure; SameSite=Strict — requer suporte do backend.
+const storage = typeof window !== "undefined" ? window.sessionStorage : null;
+
 
 function parseJwtClaims(token?: string) {
   if (!token || typeof token !== "string" || !token.includes(".")) {
@@ -36,18 +41,6 @@ function parseJwtClaims(token?: string) {
   }
 }
 
-// Default account: Cliente real Amura Teste
-const DEFAULT_AMURA_TESTE_USER: AuthUser = {
-  id: "6a96e389bc3f49ca84122eb6",
-  username: "amura@amura.com.br",
-  email: "amura@amura.com.br",
-  displayName: "Amura Teste",
-  role: "Manager",
-  customerId: "6a96e389bc3f49ca84122eb6",
-  customerName: "Amura Teste",
-  token: "jwt-amura-teste-session",
-};
-
 const AuthContext = createContext<AuthContextType | undefined>(undefined);
 
 export function AuthProvider({ children }: { children: React.ReactNode }) {
@@ -57,9 +50,9 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
 
   useEffect(() => {
     if (user) {
-      localStorage.setItem(STORAGE_KEY, JSON.stringify(user));
+      storage?.setItem(STORAGE_KEY, JSON.stringify(user));
     } else {
-      localStorage.removeItem(STORAGE_KEY);
+      storage?.removeItem(STORAGE_KEY);
     }
   }, [user]);
 
@@ -75,6 +68,12 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       });
 
       const token = response?.token;
+
+      // Valida que o backend retornou um token real antes de autenticar
+      if (!token || typeof token !== "string" || token.trim() === "") {
+        throw new Error("A API não retornou um token de autenticação válido. Verifique as credenciais.");
+      }
+
       const claims = parseJwtClaims(token) || {};
 
       const effectiveCustomerId =
@@ -104,7 +103,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         role: "Manager",
         customerId: effectiveCustomerId,
         customerName: effectiveName,
-        token: token || `jwt-${Date.now()}`,
+        token,
       };
 
       setUser(authUser);
@@ -115,7 +114,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
 
   const logout = () => {
     setUser(null);
-    localStorage.removeItem(STORAGE_KEY);
+    storage?.removeItem(STORAGE_KEY);
   };
 
   return (

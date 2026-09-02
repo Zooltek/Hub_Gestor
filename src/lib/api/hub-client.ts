@@ -1,4 +1,6 @@
 import { http, toErrorMessage } from "./http";
+import { logger } from "../logger";
+import { z } from "zod";
 import { getOrderBackendStatusLabel, getOrderImportStatusLabel } from "../status";
 import type {
   SalesOverviewKPIs,
@@ -51,14 +53,14 @@ export async function fetchCustomerOrders(customerId: string): Promise<CustomerO
       return data.map((o: any) => parseOrderFromApi(o));
     }
   } catch (error) {
-    console.warn("Falha ao buscar pedidos em /api/admin/orders, tentando rota /api/order/get-json:", toErrorMessage(error));
+    logger.warn("Falha ao buscar pedidos em /api/admin/orders, tentando rota /api/order/get-json:", toErrorMessage(error));
     try {
       const { data } = await http.get("/api/order/get-json");
       if (Array.isArray(data)) {
         return data.map((o: any) => parseOrderFromApi(o));
       }
     } catch (fallbackError) {
-      console.error("Erro ao buscar pedidos na API de produção:", toErrorMessage(fallbackError));
+      logger.error("Erro ao buscar pedidos na API de produção:", toErrorMessage(fallbackError));
     }
   }
 
@@ -374,7 +376,7 @@ export async function fetchProductBatches(customerId: string): Promise<ProductBa
       });
     }
   } catch (error) {
-    console.error("Erro ao carregar lotes de produtos da API:", toErrorMessage(error));
+    logger.error("Erro ao carregar lotes de produtos da API:", toErrorMessage(error));
   }
 
   return [];
@@ -669,7 +671,7 @@ export async function fetchProductBatchById(batchId: string): Promise<{ batch: P
       return { batch: batchDto, items: mappedItems };
     }
   } catch (error) {
-    console.error("Erro ao buscar lote por ID:", toErrorMessage(error));
+    logger.error("Erro ao buscar lote por ID:", toErrorMessage(error));
   }
 
   return null;
@@ -845,7 +847,7 @@ export async function fetchProductChanges(customerId: string, reference?: string
       });
     }
   } catch (error) {
-    console.error("Erro ao carregar alterações da esteira de produtos:", toErrorMessage(error));
+    logger.error("Erro ao carregar alterações da esteira de produtos:", toErrorMessage(error));
   }
 
   return [];
@@ -1104,7 +1106,7 @@ export async function fetchProductCatalog(customerId: string, search?: string): 
       }));
     }
   } catch (error) {
-    console.error("Erro ao buscar catálogo de produtos na API:", toErrorMessage(error));
+    logger.error("Erro ao buscar catálogo de produtos na API:", toErrorMessage(error));
   }
 
   return [];
@@ -1688,9 +1690,19 @@ export async function fetchMarketplaceCategoryMappings(
   const stored = localStorage.getItem(`hub_mkt_cat_mappings_${customerId}_${systemName}`);
   if (stored) {
     try {
-      return JSON.parse(stored);
+      // Valida schema antes de usar dados do localStorage
+      const MappingSchema = z.array(z.object({
+        erpCategoryId: z.string(),
+        erpCategoryName: z.string(),
+        marketplaceCategoryId: z.string(),
+        marketplaceCategoryName: z.string(),
+        marketplaceCategoryPath: z.string().optional(),
+        isConfirmed: z.boolean().optional(),
+      }).passthrough());
+      const parsed = MappingSchema.safeParse(JSON.parse(stored));
+      if (parsed.success) return parsed.data as unknown as MarketplaceCategoryMappingDto[];
     } catch {
-      // ignore
+      // ignore — retorna [] abaixo
     }
   }
 
@@ -1747,9 +1759,19 @@ export async function fetchMarketplaceGrades(
   const stored = localStorage.getItem(`hub_mkt_grades_${customerId}_${systemName}_${type}`);
   if (stored) {
     try {
-      return JSON.parse(stored);
+      // Valida schema antes de usar dados do localStorage
+      const GradeSchema = z.object({
+        type: z.enum(["cor", "tamanho"]),
+        items: z.array(z.object({
+          sourceValue: z.string(),
+          targetValue: z.string(),
+          targetId: z.string().optional(),
+        }).passthrough()),
+      });
+      const parsed = GradeSchema.safeParse(JSON.parse(stored));
+      if (parsed.success) return parsed.data as GradeMappingDto;
     } catch {
-      // ignore
+      // ignore — cai nos defaults abaixo
     }
   }
 
@@ -1982,7 +2004,17 @@ export async function fetchHubAvailablePlugins(customerId?: string): Promise<Hub
       // 2. Read local overrides
       try {
         const stored = localStorage.getItem(`hub_customer_plugins_${customerId}`);
-        if (stored) customerConfigMap = JSON.parse(stored);
+        if (stored) {
+          // Valida que é um objeto simples antes de usar como mapa de config
+          const PluginMapSchema = z.record(z.string(), z.object({
+            installed: z.boolean().optional(),
+            enabled: z.boolean().optional(),
+            values: z.record(z.string(), z.unknown()).optional(),
+            updatedAt: z.string().optional(),
+          }).passthrough());
+          const parsed = PluginMapSchema.safeParse(JSON.parse(stored));
+          if (parsed.success) customerConfigMap = parsed.data;
+        }
       } catch {
         // ignore
       }
@@ -2019,7 +2051,7 @@ export async function fetchHubAvailablePlugins(customerId?: string): Promise<Hub
 
     return baseList;
   } catch (error) {
-    console.error("Erro ao carregar plugins disponíveis:", toErrorMessage(error));
+    logger.error("Erro ao carregar plugins disponíveis:", toErrorMessage(error));
     return [];
   }
 }

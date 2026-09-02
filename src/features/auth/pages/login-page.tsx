@@ -8,6 +8,7 @@ import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs";
 import { Badge } from "@/components/ui/badge";
 import { useAuth } from "@/app/providers/auth-provider";
 import { toast } from "sonner";
+import { logger } from "@/lib/logger";
 
 export function LoginPage() {
   const navigate = useNavigate();
@@ -53,7 +54,7 @@ export function LoginPage() {
       toast.success("Autenticado com sucesso no Hub!");
       navigate("/");
     } catch (err: any) {
-      console.error("Login error:", err);
+      logger.error("Login error:", err);
       const serverMessage =
         err?.response?.data?.error ||
         err?.response?.data?.message ||

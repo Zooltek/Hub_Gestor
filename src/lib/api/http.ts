@@ -18,7 +18,8 @@ export const http = axios.create({
 
 http.interceptors.request.use((config) => {
   try {
-    const stored = localStorage.getItem("hub_gerencial_auth");
+    // Lê o token da sessionStorage (escopo por aba, sem persistência entre sessões)
+    const stored = sessionStorage.getItem("hub_gerencial_auth");
     if (stored) {
       const session = JSON.parse(stored);
       if (session?.token) {
