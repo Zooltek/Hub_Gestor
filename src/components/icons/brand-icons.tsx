@@ -133,7 +133,7 @@ export function MillenniumLogo({ className = "size-6", size, ...props }: IconPro
 }
 
 /**
- * Logotipo oficial Mercado Livre
+ * Logotipo oficial Mercado Livre (Oval amarelo com aperto de mãos clássico e borda azul)
  */
 export function MercadoLivreLogo({ className = "size-6", size, ...props }: IconProps) {
   return (
@@ -146,20 +146,98 @@ export function MercadoLivreLogo({ className = "size-6", size, ...props }: IconP
       height={size}
       {...props}
     >
-      <rect width="48" height="48" rx="10" fill="#FFE600" />
+      <rect width="48" height="48" rx="10" fill="#F8FAFC" />
+      {/* Oval background */}
+      <ellipse cx="24" cy="24" rx="21" ry="15" fill="#FFE600" stroke="#002F87" strokeWidth="2.8" />
+      {/* Handshake graphic */}
+      {/* Left arm sleeve */}
       <path
-        d="M14 26.5C14 22 17.5 17 24 17C30.5 17 34 22 34 26.5C34 31 29.5 33 24 33C18.5 33 14 31 14 26.5Z"
-        stroke="#2D3277"
-        strokeWidth="2.5"
-      />
-      <path
-        d="M18 25C19.5 27 22 28.5 24 28.5C26 28.5 28.5 27 30 25"
-        stroke="#2D3277"
-        strokeWidth="2.5"
+        d="M5 24.5C8 23 12 23 15 25.5"
+        stroke="#002F87"
+        strokeWidth="2.4"
         strokeLinecap="round"
       />
-      <circle cx="20" cy="22" r="1.5" fill="#2D3277" />
-      <circle cx="28" cy="22" r="1.5" fill="#2D3277" />
+      {/* Right arm sleeve */}
+      <path
+        d="M43 23.5C40 22 36 22 33 24.5"
+        stroke="#002F87"
+        strokeWidth="2.4"
+        strokeLinecap="round"
+      />
+      {/* Main hands shape */}
+      <path
+        d="M9 25C13 23.5 17 24 20 27L22 25C23.5 23.5 25.5 23 27.5 24L32 27.5C33.5 28.5 33.5 30.5 32 32C30.5 33.5 28.5 33.5 27 32L24.5 29.5L23 31C22 32 20.5 32 19.5 31L18 29.5L16.5 31C15.5 32 14 32 13 31L11.5 29.5L10 30.5C9 31.5 7.5 31 7 29.5L9 25Z"
+        fill="white"
+        stroke="#002F87"
+        strokeWidth="2"
+        strokeLinejoin="round"
+      />
+      {/* Handshake knuckle lines */}
+      <path
+        d="M27 24L21 30"
+        stroke="#002F87"
+        strokeWidth="1.8"
+        strokeLinecap="round"
+      />
+      <path
+        d="M29.5 26L24 31.5"
+        stroke="#002F87"
+        strokeWidth="1.6"
+        strokeLinecap="round"
+      />
+      {/* Fingers arches */}
+      <path
+        d="M13 30C13.5 31.2 15 31.2 15.5 30"
+        stroke="#002F87"
+        strokeWidth="1.8"
+      />
+      <path
+        d="M16.5 30C17 31.2 18.5 31.2 19 30"
+        stroke="#002F87"
+        strokeWidth="1.8"
+      />
+      <path
+        d="M20 30C20.5 31.2 22 31.2 22.5 30"
+        stroke="#002F87"
+        strokeWidth="1.8"
+      />
+    </svg>
+  );
+}
+
+/**
+ * Logotipo oficial Loja Integrada
+ */
+export function LojaIntegradaLogo({ className = "size-6", size, ...props }: IconProps) {
+  return (
+    <svg
+      viewBox="0 0 48 48"
+      fill="none"
+      xmlns="http://www.w3.org/2000/svg"
+      className={className}
+      width={size}
+      height={size}
+      {...props}
+    >
+      <rect width="48" height="48" rx="10" fill="#F8FAFC" />
+      {/* Stylized U ribbon */}
+      <path
+        d="M12 18C12 14.6863 14.6863 12 18 12C21.3137 12 24 14.6863 24 18V25C24 27.2091 25.7909 29 28 29H31C33.2091 29 35 27.2091 35 25V24C35 22.3431 36.3431 21 38 21C39.6569 21 41 22.3431 41 24V25C41 32.1797 35.1797 38 28 38C20.8203 38 15 32.1797 15 25V18C15 16.3431 13.6569 15 12 15C10.3431 15 9 16.3431 9 18V25C9 35.4934 17.5066 44 28 44C38.4934 44 47 35.4934 47 25V24C47 19.0294 42.9706 15 38 15C36.8 15 35.66 15.24 34.62 15.68C33.15 13.46 30.73 12 28 12C24.49 12 21.46 14.03 20 17C19.46 16.38 18.77 15.89 18 15.58V18H12Z"
+        fill="url(#li-teal-grad)"
+      />
+      <path
+        d="M11 18C11 14.134 14.134 11 18 11C21.866 11 25 14.134 25 18V25C25 26.6569 26.3431 28 28 28C29.6569 28 31 26.6569 31 25V24C31 20.134 34.134 17 38 17C41.866 17 45 20.134 45 24V25C45 34.3888 37.3888 42 28 42C18.6112 42 11 34.3888 11 25V18Z"
+        fill="url(#li-teal-grad)"
+      />
+      {/* Purple Dot */}
+      <circle cx="36" cy="14" r="5.5" fill="#3B1A5B" />
+      <defs>
+        <linearGradient id="li-teal-grad" x1="11" y1="11" x2="45" y2="42" gradientUnits="userSpaceOnUse">
+          <stop stopColor="#00E5D2" />
+          <stop offset="0.5" stopColor="#00BFA5" />
+          <stop offset="1" stopColor="#008E80" />
+        </linearGradient>
+      </defs>
     </svg>
   );
 }
@@ -392,6 +470,9 @@ export function getPluginLogo(systemName: string, className = "size-8"): React.R
   }
   if (norm.includes("nuvemshop")) {
     return <NuvemshopLogo className={className} />;
+  }
+  if (norm.includes("lojaintegrada") || norm.includes("loja_integrada") || norm.includes("integrada")) {
+    return <LojaIntegradaLogo className={className} />;
   }
   if (norm.includes("bling")) {
     return <BlingLogo className={className} />;

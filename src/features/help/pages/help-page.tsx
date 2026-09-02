@@ -25,6 +25,7 @@ import {
   RefreshCw,
   Copy,
   Check,
+  ShoppingCart,
 } from "lucide-react";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -42,6 +43,7 @@ import {
   RestApiLogo,
   ShopeeLogo,
   AmazonLogo,
+  LojaIntegradaLogo,
 } from "@/components/icons/brand-icons";
 import { toast } from "sonner";
 
@@ -571,24 +573,28 @@ Headers:
                 </div>
               </div>
 
-              {/* Shopify */}
+              {/* Loja Integrada */}
               <div className="flex flex-col gap-4 rounded-xl border border-border/80 bg-sidebar/40 p-5">
-                <div className="flex items-center gap-3">
-                  <ShopifyLogo className="size-8 rounded-lg shrink-0" />
-                  <div>
-                    <h3 className="text-base font-bold text-foreground">Shopify Cloud</h3>
-                    <p className="text-xs text-muted-foreground">Sincronização estrita de variantes por SKU e inventário em tempo real</p>
+                <div className="flex items-center justify-between">
+                  <div className="flex items-center gap-3">
+                    <LojaIntegradaLogo className="size-8 rounded-lg shrink-0" />
+                    <div>
+                      <h3 className="text-base font-bold text-foreground">Loja Integrada</h3>
+                      <p className="text-xs text-muted-foreground">Sincronização de produtos, estoque e captura de pedidos em tempo real</p>
+                    </div>
                   </div>
+                  <Badge variant="outline" className="border-teal-500/30 text-teal-400 bg-teal-500/10 text-xs">
+                    E-commerce
+                  </Badge>
                 </div>
 
                 <div className="text-xs text-muted-foreground space-y-2 border-t border-border/50 pt-3">
-                  <p className="font-semibold text-foreground">Como configurar o App Customizado no Shopify:</p>
+                  <p className="font-semibold text-foreground">Como configurar a Loja Integrada no Hub:</p>
                   <ol className="list-decimal list-inside space-y-1.5 pl-1 leading-relaxed">
-                    <li>No painel do Shopify, vá em <strong>Configurações &gt; Apps e canais de vendas &gt; Desenvolver apps</strong>.</li>
-                    <li>Clique em <strong>Criar um app</strong> e dê o nome de <em>Amura Hub Sync</em>.</li>
-                    <li>Na aba <strong>Configuração</strong>, configure os escopos da API Admin: <em>write_products, read_products, write_inventory, read_inventory, write_orders, read_orders</em>.</li>
-                    <li>Clique em <strong>Instalar app</strong> e copie o <strong>Admin API Access Token</strong> (que começa com <code>shpat_...</code>).</li>
-                    <li>No Hub Gestor, insira o domínio da loja (ex: <code>minhaloja.myshopify.com</code>) e o Token gerado.</li>
+                    <li>No painel da Loja Integrada, acesse <strong>Configurações &gt; Chave para API</strong>.</li>
+                    <li>Gere ou copie a <strong>Chave de API</strong> e a <strong>Chave de Aplicação (App Key)</strong>.</li>
+                    <li>No Hub Gestor, acesse <strong>Conexão ERP Online &gt; Catálogo de Plugins &gt; Loja Integrada</strong>.</li>
+                    <li>Cole as credenciais e ative o plugin para iniciar a esteira automática de produtos e pedidos.</li>
                   </ol>
                 </div>
               </div>
@@ -597,7 +603,7 @@ Headers:
         </TabsContent>
 
         {/* ------------------------------------------------------------- */}
-        {/* SEÇÃO 4: ESTEIRA DE PRODUTOS & LOTES                         */}
+        {/* SEÇÃO 4: ESTEIRA DE PRODUTOS, LOTES & FREQUÊNCIA DE BUSCA     */}
         {/* ------------------------------------------------------------- */}
         <TabsContent value="products-pipeline" className="m-0 flex flex-col gap-6">
           <Card className="border-border/80 bg-card">
@@ -608,16 +614,74 @@ Headers:
                 </div>
                 <div>
                   <CardTitle className="text-lg font-bold">
-                    Esteira de Processamento de Lotes (Pipeline)
+                    Esteira de Produtos, Lotes & Frequência de Busca Automática
                   </CardTitle>
                   <CardDescription className="text-xs">
-                    Entenda como o Hub recebe dados do ERP, detecta divergências e permite revisão antes do despacho para os canais.
+                    Como funciona o motor de sincronização em segundo plano, cron de busca e curadoria de alterações de catálogo.
                   </CardDescription>
                 </div>
               </div>
             </CardHeader>
 
             <CardContent className="pt-6 flex flex-col gap-6">
+              {/* Frequência de Sincronização e Busca Automática */}
+              <div className="flex flex-col gap-4 rounded-xl border border-primary/30 bg-primary/5 p-5">
+                <div className="flex items-center gap-3">
+                  <div className="p-2 rounded-lg bg-primary/10 text-primary">
+                    <RefreshCw className="size-5" />
+                  </div>
+                  <div>
+                    <h3 className="text-base font-bold text-foreground">Frequência de Sincronização & Motor de Busca Automática</h3>
+                    <p className="text-xs text-muted-foreground">Execução em nuvem via Hangfire Recurring Jobs com travas distribuídas</p>
+                  </div>
+                </div>
+
+                <div className="text-xs text-muted-foreground space-y-3 border-t border-border/50 pt-3 leading-relaxed">
+                  <p>
+                    O Hub conta com um motor autônomo em nuvem (Engine de Background Workers) que executa consultas periódicas aos ERPs e Marketplaces de forma transparente:
+                  </p>
+                  <div className="grid gap-3 sm:grid-cols-2 md:grid-cols-3 mt-2">
+                    <div className="p-3 rounded-lg border border-border bg-card">
+                      <span className="font-semibold text-foreground flex items-center gap-1.5">
+                        <Clock className="size-3.5 text-primary" /> Frequência de Pedidos
+                      </span>
+                      <p className="text-[11px] text-muted-foreground mt-1">
+                        Padrão: <strong>a cada 1 minuto (<code>* * * * *</code>)</strong>. O motor varre todos os canais integrados para capturar vendas assim que o cliente conclui o checkout.
+                      </p>
+                    </div>
+
+                    <div className="p-3 rounded-lg border border-border bg-card">
+                      <span className="font-semibold text-foreground flex items-center gap-1.5">
+                        <Boxes className="size-3.5 text-indigo-400" /> Frequência de Produtos
+                      </span>
+                      <p className="text-[11px] text-muted-foreground mt-1">
+                        Padrão: <strong>a cada 15 ou 60 minutos</strong>. Atualiza novos produtos cadastrados, alterações de descrição e tabelas de preço.
+                      </p>
+                    </div>
+
+                    <div className="p-3 rounded-lg border border-border bg-card">
+                      <span className="font-semibold text-foreground flex items-center gap-1.5">
+                        <Zap className="size-3.5 text-amber-400" /> Travas Anti-Duplicidade
+                      </span>
+                      <p className="text-[11px] text-muted-foreground mt-1">
+                        Se uma consulta demorar mais que o habitual, o Hub ativa um <em>Distributed Lock</em> impedindo que o próximo ciclo sobreponha a execução anterior.
+                      </p>
+                    </div>
+                  </div>
+
+                  <div className="p-3 rounded-lg border border-border/70 bg-card/80 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3 mt-1">
+                    <div>
+                      <p className="font-semibold text-foreground text-xs">Precisa atualizar imediatamente sem esperar o ciclo do Cron?</p>
+                      <p className="text-[11px] text-muted-foreground">Utilize o botão <strong>"Sincronizar Agora"</strong> na aba <em>Frequência de Busca</em> para forçar a execução instantânea.</p>
+                    </div>
+                    <Badge variant="outline" className="border-emerald-500/30 text-emerald-400 bg-emerald-500/10 text-xs shrink-0 gap-1">
+                      <Zap className="size-3" /> Disparo Sob Demanda
+                    </Badge>
+                  </div>
+                </div>
+              </div>
+
+              {/* Etapas da Esteira */}
               <div className="grid gap-4 md:grid-cols-3">
                 <div className="p-4 rounded-xl border border-border bg-sidebar/50 flex flex-col gap-2">
                   <div className="flex items-center gap-2 text-primary font-semibold text-sm">
@@ -651,7 +715,7 @@ Headers:
               </div>
 
               {/* Edição em Massa */}
-              <div className="p-4 rounded-xl border border-primary/20 bg-primary/5 flex flex-col gap-2 mt-2">
+              <div className="p-4 rounded-xl border border-border/80 bg-sidebar/50 flex flex-col gap-2">
                 <h4 className="text-sm font-bold text-foreground flex items-center gap-2">
                   <Zap className="size-4 text-primary" /> Edição em Massa de Catálogo & Preços
                 </h4>
@@ -664,7 +728,7 @@ Headers:
         </TabsContent>
 
         {/* ------------------------------------------------------------- */}
-        {/* SEÇÃO 5: GESTÃO DE PEDIDOS & TRAVAS DE CONCORRÊNCIA          */}
+        {/* SEÇÃO 5: GESTÃO DE PEDIDOS, STATUS & FORÇAR SINCRONIZAÇÃO     */}
         {/* ------------------------------------------------------------- */}
         <TabsContent value="orders-concurrency" className="m-0 flex flex-col gap-6">
           <Card className="border-border/80 bg-card">
@@ -675,35 +739,135 @@ Headers:
                 </div>
                 <div>
                   <CardTitle className="text-lg font-bold">
-                    Gestão de Pedidos & Mecanismo Anti-Colisão
+                    Gestão de Pedidos, Ciclo de Status & Sincronização
                   </CardTitle>
                   <CardDescription className="text-xs">
-                    Proteção contra sobrescrita simultânea de pedidos quando múltiplos operadores trabalham no mesmo painel.
+                    Entenda todos os status do ciclo de vida dos pedidos, como forçar a sincronização imediata e a proteção contra concorrência simultânea.
                   </CardDescription>
                 </div>
               </div>
             </CardHeader>
 
-            <CardContent className="pt-6 flex flex-col gap-6">
+            <CardContent className="pt-6 flex flex-col gap-8">
+              {/* Botão de Forçar Sincronização de Pedidos */}
+              <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4 p-4 rounded-xl border border-emerald-500/30 bg-emerald-500/5">
+                <div className="flex items-start gap-3">
+                  <div className="p-2 rounded-lg bg-emerald-500/10 text-emerald-400 mt-0.5">
+                    <RefreshCw className="size-4" />
+                  </div>
+                  <div>
+                    <h4 className="text-sm font-bold text-foreground">Como Forçar a Sincronização Imediata de Pedidos?</h4>
+                    <p className="text-xs text-muted-foreground mt-0.5 leading-relaxed">
+                      Em <strong>Pedidos (/pedidos)</strong> ou no <strong>Dashboard</strong>, clique no botão <strong>"Atualizar / Sincronizar"</strong> no topo da página. O Hub enviará um comando de trigger para todos os canais (Mercado Livre, Shopify, Shopee, etc.) para buscar pedidos recentes sem esperar o próximo minuto do cron.
+                    </p>
+                  </div>
+                </div>
+                <Badge variant="outline" className="border-emerald-500/30 text-emerald-400 bg-emerald-500/10 text-xs shrink-0 py-1 px-3">
+                  Atalho Rápido no Topo
+                </Badge>
+              </div>
+
+              {/* Tabela de Status dos Pedidos */}
+              <div className="flex flex-col gap-3">
+                <h3 className="text-sm font-bold text-foreground flex items-center gap-2">
+                  <ShoppingCart className="size-4 text-primary" /> Significado de Todos os Status do Pedido
+                </h3>
+                <p className="text-xs text-muted-foreground">
+                  Cada pedido possui dois indicadores: o <strong>Status Comercial da Venda</strong> e o <strong>Status de Integração com o ERP</strong>:
+                </p>
+
+                <div className="grid gap-4 md:grid-cols-2 mt-2">
+                  {/* Status da Venda */}
+                  <div className="rounded-xl border border-border bg-sidebar/50 p-4 flex flex-col gap-3">
+                    <span className="text-xs font-bold text-foreground uppercase tracking-wider text-primary border-b border-border/60 pb-2">
+                      1. Status Comercial (Venda no Canal)
+                    </span>
+                    <div className="space-y-2.5 text-xs">
+                      <div className="flex items-start justify-between gap-2">
+                        <Badge variant="success" className="text-[10px] shrink-0">Pagamento recebido</Badge>
+                        <span className="text-muted-foreground text-[11px] text-right">Venda paga e confirmada. Pronta para emissão de nota.</span>
+                      </div>
+                      <div className="flex items-start justify-between gap-2">
+                        <Badge variant="warning" className="text-[10px] shrink-0">Aguardando pagamento</Badge>
+                        <span className="text-muted-foreground text-[11px] text-right">Boleto gerado ou Pix pendente de liquidação.</span>
+                      </div>
+                      <div className="flex items-start justify-between gap-2">
+                        <Badge variant="secondary" className="text-[10px] shrink-0">Pedido em separação</Badge>
+                        <span className="text-muted-foreground text-[11px] text-right">Itens sendo coletados no estoque físico (Picking).</span>
+                      </div>
+                      <div className="flex items-start justify-between gap-2">
+                        <Badge variant="success" className="text-[10px] shrink-0">Pedido faturado</Badge>
+                        <span className="text-muted-foreground text-[11px] text-right">Nota Fiscal (NFe) autorizada na SEFAZ pelo ERP.</span>
+                      </div>
+                      <div className="flex items-start justify-between gap-2">
+                        <Badge variant="success" className="text-[10px] shrink-0">Pedido enviado</Badge>
+                        <span className="text-muted-foreground text-[11px] text-right">Despachado com código de rastreamento ativo.</span>
+                      </div>
+                      <div className="flex items-start justify-between gap-2">
+                        <Badge variant="success" className="text-[10px] shrink-0">Pedido entregue</Badge>
+                        <span className="text-muted-foreground text-[11px] text-right">Concluído com entrega comprovada ao comprador.</span>
+                      </div>
+                      <div className="flex items-start justify-between gap-2">
+                        <Badge variant="destructive" className="text-[10px] shrink-0">Pedido cancelado</Badge>
+                        <span className="text-muted-foreground text-[11px] text-right">Venda cancelada por falta de pagamento ou pelo cliente.</span>
+                      </div>
+                    </div>
+                  </div>
+
+                  {/* Status de Integração ERP */}
+                  <div className="rounded-xl border border-border bg-sidebar/50 p-4 flex flex-col gap-3">
+                    <span className="text-xs font-bold text-foreground uppercase tracking-wider text-emerald-400 border-b border-border/60 pb-2">
+                      2. Status de Download / Envio ao ERP
+                    </span>
+                    <div className="space-y-2.5 text-xs">
+                      <div className="flex items-start justify-between gap-2">
+                        <Badge variant="outline" className="border-emerald-500/30 text-emerald-400 bg-emerald-500/10 text-[10px] shrink-0">
+                          Importado / Baixado
+                        </Badge>
+                        <span className="text-muted-foreground text-[11px] text-right">Pedido transmitido e gravado com sucesso no seu ERP.</span>
+                      </div>
+                      <div className="flex items-start justify-between gap-2">
+                        <Badge variant="outline" className="border-amber-500/30 text-amber-400 bg-amber-500/10 text-[10px] shrink-0">
+                          Não baixado / Pendente
+                        </Badge>
+                        <span className="text-muted-foreground text-[11px] text-right">Aguardando o próximo ciclo de busca do ERP.</span>
+                      </div>
+                      <div className="flex items-start justify-between gap-2">
+                        <Badge variant="outline" className="border-destructive/30 text-destructive bg-destructive/10 text-[10px] shrink-0">
+                          Falha na importação
+                        </Badge>
+                        <span className="text-muted-foreground text-[11px] text-right">Divergência (ex: SKU não cadastrado no ERP). Requer ajuste.</span>
+                      </div>
+                      <div className="flex items-start justify-between gap-2">
+                        <Badge variant="outline" className="border-sky-500/30 text-sky-400 bg-sky-500/10 text-[10px] shrink-0">
+                          Corrigido
+                        </Badge>
+                        <span className="text-muted-foreground text-[11px] text-right">Editado no modal e pronto para reenvio automático.</span>
+                      </div>
+                    </div>
+                  </div>
+                </div>
+              </div>
+
+              {/* Anti-Colisão Heartbeat Lock */}
               <div className="flex flex-col gap-4 rounded-xl border border-border/80 bg-sidebar/50 p-5">
                 <div className="flex items-center gap-3">
                   <div className="p-2 rounded-lg bg-purple-500/10 text-purple-400">
                     <Lock className="size-5" />
                   </div>
                   <div>
-                    <h3 className="text-base font-bold text-foreground">Como funciona a Proteção Anti-Colisão (Heartbeat Lock)?</h3>
-                    <p className="text-xs text-muted-foreground">Garante consistência e integridade absoluta aos pedidos de venda</p>
+                    <h3 className="text-base font-bold text-foreground">Proteção Anti-Colisão em Tempo Real (Heartbeat Lock)</h3>
+                    <p className="text-xs text-muted-foreground">Garante integridade quando múltiplos operadores atendem a mesma loja</p>
                   </div>
                 </div>
 
                 <div className="text-xs text-muted-foreground space-y-3 border-t border-border/50 pt-3 leading-relaxed">
                   <p>
-                    Quando um operador abre o modal de edição de um pedido (seja na aba de Formulário ou no Editor JSON Bruto), o Hub registra uma <strong>trava exclusiva temporária</strong> para aquele operador.
+                    Ao abrir um pedido para edição (aba Formulário ou Editor JSON Bruto), o Hub assume uma <strong>trava temporária exclusiva</strong>:
                   </p>
-                  <ul className="space-y-2 list-disc list-inside pl-1">
-                    <li><strong>Banner em Tempo Real</strong>: Se outro operador tentar editar o mesmo pedido simultaneamente, o sistema exibirá um aviso informativo indicando quem está editando no momento.</li>
-                    <li><strong>Expiração Automática por Inatividade</strong>: Se o operador fechar o navegador ou ficar inativo por mais de 2 minutos, a trava expira automaticamente, liberando a edição para outros membros da equipe sem travar a operação.</li>
-                    <li><strong>Editor JSON com Validação Sintática</strong>: Permite correções manuais avançadas em payloads de pedidos com validação de esquema antes de salvar no MongoDB.</li>
+                  <ul className="space-y-1.5 list-disc list-inside pl-1">
+                    <li><strong>Aviso em Tempo Real</strong>: Outros usuários verão um banner indicando quem está com o pedido aberto.</li>
+                    <li><strong>Auto-liberação por Inatividade</strong>: Se o operador fechar a janela ou ficar inativo por 2 minutos, o pedido é liberado automaticamente.</li>
                   </ul>
                 </div>
               </div>
