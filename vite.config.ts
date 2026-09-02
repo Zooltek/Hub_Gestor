@@ -37,6 +37,23 @@ export default defineConfig({
   preview: {
     host: "0.0.0.0",
     port,
+    proxy: {
+      "/api": {
+        target: apiTarget,
+        changeOrigin: true,
+        secure: false,
+      },
+      "/health": {
+        target: apiTarget,
+        changeOrigin: true,
+        secure: false,
+      },
+      "/alive": {
+        target: apiTarget,
+        changeOrigin: true,
+        secure: false,
+      },
+    },
   },
   test: {
     environment: "jsdom",

@@ -22,6 +22,7 @@ import { Badge } from "@/components/ui/badge";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { useAuth } from "@/app/providers/auth-provider";
+import { Link } from "react-router-dom";
 import {
   fetchCustomerPlugins,
   fetchMarketplaceRemoteCategories,
@@ -35,6 +36,7 @@ import {
   type RemoteCategoryDto,
   type GradeMappingDto,
 } from "@/lib/api/hub-client";
+import { getPluginLogo } from "@/components/icons/brand-icons";
 import { toast } from "sonner";
 
 export function MarketplaceMappingPage() {
@@ -195,21 +197,26 @@ export function MarketplaceMappingPage() {
 
         <div className="flex items-center gap-2">
           {/* Seletor de Marketplace */}
-          <div className="flex items-center gap-1.5 p-1 rounded-lg bg-muted/60 border border-border">
-            {plugins.map((plugin) => (
-              <button
-                key={plugin.systemName}
-                onClick={() => setSelectedPlugin(plugin.systemName)}
-                className={`px-3 py-1.5 rounded-md text-xs font-semibold transition-all cursor-pointer ${
-                  selectedPlugin === plugin.systemName
-                    ? "bg-primary text-primary-foreground shadow-xs"
-                    : "text-muted-foreground hover:text-foreground"
-                }`}
-              >
-                {plugin.friendlyName}
-              </button>
-            ))}
-          </div>
+          {plugins.length > 0 && (
+            <div className="flex items-center gap-1.5 p-1 rounded-lg bg-muted/60 border border-border">
+              {plugins.map((plugin) => (
+                <button
+                  key={plugin.systemName}
+                  onClick={() => setSelectedPlugin(plugin.systemName)}
+                  className={`flex items-center gap-2 px-3 py-1.5 rounded-md text-xs font-semibold transition-all cursor-pointer ${
+                    selectedPlugin === plugin.systemName
+                      ? "bg-primary text-primary-foreground shadow-xs"
+                      : "text-muted-foreground hover:text-foreground"
+                  }`}
+                >
+                  <span className="shrink-0">
+                    {getPluginLogo(plugin.systemName, "size-4 rounded-xs shrink-0")}
+                  </span>
+                  <span>{plugin.friendlyName}</span>
+                </button>
+              ))}
+            </div>
+          )}
 
           <Button variant="outline" size="sm" onClick={loadData} disabled={isLoading}>
             <RefreshCw className={`size-3.5 mr-1.5 ${isLoading ? "animate-spin" : ""}`} />
@@ -217,6 +224,25 @@ export function MarketplaceMappingPage() {
           </Button>
         </div>
       </div>
+
+      {plugins.length === 0 && !isLoading && (
+        <Card className="border-amber-500/30 bg-amber-500/5">
+          <CardContent className="p-6 flex flex-col sm:flex-row items-center justify-between gap-4">
+            <div className="flex items-center gap-3">
+              <AlertCircle className="size-6 text-amber-400 shrink-0" />
+              <div>
+                <p className="text-sm font-semibold text-foreground">Nenhum plugin de marketplace instalado</p>
+                <p className="text-xs text-muted-foreground">
+                  Para utilizar o mapeamento de categorias e grades, instale um plugin como Mercado Livre ou Shopify no catálogo.
+                </p>
+              </div>
+            </div>
+            <Button asChild size="sm" className="shrink-0 text-xs">
+              <Link to="/conexoes-erp">Ir para Catálogo de Plugins</Link>
+            </Button>
+          </CardContent>
+        </Card>
+      )}
 
       {/* Tabs Principais */}
       <Tabs defaultValue="categories" className="space-y-4">

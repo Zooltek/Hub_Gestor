@@ -11,53 +11,13 @@ import {
   Plug,
   ShieldCheck,
   Store,
+  BookOpen,
   X,
 } from "lucide-react";
+import { useQuery } from "@tanstack/react-query";
 import { useAuth } from "@/app/providers/auth-provider";
+import { fetchCustomerPlugins } from "@/lib/api/hub-client";
 import { Button } from "@/components/ui/button";
-
-const navItems = [
-  {
-    title: "Dashboard",
-    href: "/",
-    icon: LayoutDashboard,
-  },
-  {
-    title: "Pedidos",
-    href: "/pedidos",
-    icon: ShoppingCart,
-  },
-  {
-    title: "Lotes de Produtos",
-    href: "/lotes-produtos",
-    icon: Layers,
-  },
-  {
-    title: "Catálogo & Estoque",
-    href: "/catalogo",
-    icon: Package,
-  },
-  {
-    title: "Mapeamento Canais",
-    href: "/mapeamento-marketplaces",
-    icon: Store,
-  },
-  {
-    title: "Conexão ERP Online",
-    href: "/conexoes-erp",
-    icon: Plug,
-  },
-  {
-    title: "Saúde & Conexões",
-    href: "/saude",
-    icon: Activity,
-  },
-  {
-    title: "Equipe / Usuários",
-    href: "/equipe",
-    icon: Users,
-  },
-];
 
 interface AppSidebarProps {
   isMobileOpen?: boolean;
@@ -66,6 +26,80 @@ interface AppSidebarProps {
 
 export function AppSidebar({ isMobileOpen = false, onMobileClose }: AppSidebarProps) {
   const { user, logout } = useAuth();
+
+  // Consulta plugins instalados para o cliente atual
+  const { data: plugins } = useQuery({
+    queryKey: ["customer-plugins", user?.customerId],
+    queryFn: () => (user?.customerId ? fetchCustomerPlugins(user.customerId) : Promise.resolve([])),
+    staleTime: 30000,
+  });
+
+  // Mapeamento Canais só deve aparecer se algum plugin de marketplace estiver instalado
+  const hasMarketplacePlugin = Boolean(
+    plugins?.some((p) => {
+      const name = (p.systemName || "").toLowerCase();
+      return (
+        p.kind === "marketplace" ||
+        name.includes("mercadolivre") ||
+        name.includes("shopee") ||
+        name.includes("amazon") ||
+        name.includes("magalu") ||
+        name.includes("marketplace")
+      );
+    })
+  );
+
+  const navItems = [
+    {
+      title: "Dashboard",
+      href: "/",
+      icon: LayoutDashboard,
+    },
+    {
+      title: "Pedidos",
+      href: "/pedidos",
+      icon: ShoppingCart,
+    },
+    {
+      title: "Lotes de Produtos",
+      href: "/lotes-produtos",
+      icon: Layers,
+    },
+    {
+      title: "Catálogo & Estoque",
+      href: "/catalogo",
+      icon: Package,
+    },
+    ...(hasMarketplacePlugin
+      ? [
+          {
+            title: "Mapeamento Canais",
+            href: "/mapeamento-marketplaces",
+            icon: Store,
+          },
+        ]
+      : []),
+    {
+      title: "Conexão ERP Online",
+      href: "/conexoes-erp",
+      icon: Plug,
+    },
+    {
+      title: "Saúde & Conexões",
+      href: "/saude",
+      icon: Activity,
+    },
+    {
+      title: "Equipe / Usuários",
+      href: "/equipe",
+      icon: Users,
+    },
+    {
+      title: "Ajuda & Manual",
+      href: "/ajuda",
+      icon: BookOpen,
+    },
+  ];
 
   return (
     <>

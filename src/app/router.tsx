@@ -11,6 +11,7 @@ import { MarketplaceMappingPage } from "@/features/marketplace-mapping/pages/mar
 import { ErpConnectionsPage } from "@/features/erp-connections/pages/erp-connections-page";
 import { HealthPage } from "@/features/health/pages/health-page";
 import { TeamPage } from "@/features/team/pages/team-page";
+import { HelpPage } from "@/features/help/pages/help-page";
 
 export const router = createBrowserRouter([
   {
@@ -58,6 +59,10 @@ export const router = createBrowserRouter([
           {
             path: "/equipe",
             element: <TeamPage />,
+          },
+          {
+            path: "/ajuda",
+            element: <HelpPage />,
           },
         ],
       },

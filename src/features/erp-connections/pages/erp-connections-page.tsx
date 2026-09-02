@@ -45,6 +45,7 @@ import {
   uninstallCustomerPlugin,
   type HubPluginDto,
 } from "@/lib/api/hub-client";
+import { getPluginLogo, getErpLogo } from "@/components/icons/brand-icons";
 import { toast } from "sonner";
 
 export interface ErpProvider {
@@ -480,13 +481,13 @@ export function ErpConnectionsPage() {
             <RefreshCw className="size-4" />
             Frequência de Busca
           </TabsTrigger>
-          <TabsTrigger value="erps" className="text-xs flex items-center gap-1.5">
-            <Store className="size-4" />
-            ERPs de Mercado
-          </TabsTrigger>
           <TabsTrigger value="custom-rest" className="text-xs flex items-center gap-1.5">
             <Database className="size-4" />
             API REST & Webhook
+          </TabsTrigger>
+          <TabsTrigger value="erps" className="text-xs flex items-center gap-1.5">
+            <Store className="size-4" />
+            ERPs de Mercado
           </TabsTrigger>
         </TabsList>
 
@@ -727,15 +728,15 @@ export function ErpConnectionsPage() {
                 >
                   <CardHeader className="pb-3">
                     <div className="flex items-start justify-between gap-2">
-                      <div className="flex items-center gap-2.5">
-                        <div className="flex size-10 items-center justify-center rounded-lg bg-primary/10 border border-primary/20 text-primary font-bold text-sm">
-                          {(plugin.friendlyName || plugin.systemName).substring(0, 2).toUpperCase()}
+                      <div className="flex items-center gap-2.5 min-w-0">
+                        <div className="shrink-0 flex items-center justify-center rounded-lg overflow-hidden shadow-xs">
+                          {getPluginLogo(plugin.systemName, "size-10 rounded-lg shrink-0")}
                         </div>
-                        <div>
-                          <CardTitle className="text-base font-bold text-foreground leading-tight">
+                        <div className="min-w-0">
+                          <CardTitle className="text-base font-bold text-foreground leading-tight truncate">
                             {plugin.friendlyName || plugin.systemName}
                           </CardTitle>
-                          <p className="text-[11px] font-mono text-muted-foreground mt-0.5">
+                          <p className="text-[11px] font-mono text-muted-foreground mt-0.5 truncate">
                             {plugin.systemName}
                           </p>
                         </div>
@@ -743,7 +744,7 @@ export function ErpConnectionsPage() {
 
                       <Badge
                         variant={isInstalled && isEnabled ? "success" : isInstalled ? "warning" : "secondary"}
-                        className="text-[10px]"
+                        className="text-[10px] shrink-0"
                       >
                         {isInstalled && isEnabled ? "Ativo" : isInstalled ? "Pausado" : "Disponível"}
                       </Badge>
@@ -813,7 +814,66 @@ export function ErpConnectionsPage() {
           </div>
         </TabsContent>
 
-        {/* Tab 2: Standard Cloud ERP Providers */}
+        {/* Tab 3: Custom REST & Webhook (Repositioned to the front) */}
+        <TabsContent value="custom-rest" className="m-0 flex flex-col gap-4">
+          <Card className="border-border/80">
+            <CardHeader>
+              <div className="flex items-center gap-3">
+                <div className="shrink-0 flex items-center justify-center rounded-lg overflow-hidden shadow-xs">
+                  {getErpLogo("custom_rest", "size-10 rounded-lg shrink-0")}
+                </div>
+                <div>
+                  <CardTitle className="text-base flex items-center gap-2">
+                    <Database className="size-4 text-purple-400" />
+                    Integração REST Sob Medida (Seu Próprio ERP)
+                  </CardTitle>
+                  <CardDescription className="text-xs">
+                    Utilize endpoints REST seguros para comunicar seu sistema com o Hub em tempo real.
+                  </CardDescription>
+                </div>
+              </div>
+            </CardHeader>
+            <CardContent className="flex flex-col gap-4">
+              {providers
+                .filter((p) => p.id === "custom_rest")
+                .map((provider) => (
+                  <div key={provider.id} className="flex flex-col gap-4">
+                    <div className="grid gap-3 sm:grid-cols-2">
+                      {provider.fields.map((field) => (
+                        <div key={field.key} className="flex flex-col gap-1.5">
+                          <label className="text-xs font-semibold text-foreground">{field.label}</label>
+                          <Input
+                            type={field.type}
+                            placeholder={field.placeholder}
+                            value={formFields[field.key] || field.value || ""}
+                            onChange={(e) => handleFieldChange(field.key, e.target.value)}
+                            className="text-xs font-mono"
+                          />
+                          {field.description && (
+                            <span className="text-[11px] text-muted-foreground">{field.description}</span>
+                          )}
+                        </div>
+                      ))}
+                    </div>
+
+                    <div className="flex justify-end pt-3 border-t border-border/60">
+                      <Button
+                        size="sm"
+                        onClick={handleTestConnection}
+                        disabled={isTesting}
+                        className="text-xs gap-1.5 bg-purple-600 hover:bg-purple-700 text-white font-medium"
+                      >
+                        <Zap className={`size-3.5 ${isTesting ? "animate-spin" : ""}`} />
+                        {isTesting ? "Validando Endpoints..." : "Salvar Configuração REST"}
+                      </Button>
+                    </div>
+                  </div>
+                ))}
+            </CardContent>
+          </Card>
+        </TabsContent>
+
+        {/* Tab 4: Standard Cloud ERP Providers */}
         <TabsContent value="erps" className="m-0">
           <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3">
             {providers
@@ -832,10 +892,8 @@ export function ErpConnectionsPage() {
                   >
                     <CardHeader className="pb-3">
                       <div className="flex items-center justify-between">
-                        <div
-                          className={`flex size-10 items-center justify-center rounded-lg border font-bold text-sm ${provider.logoColor}`}
-                        >
-                          {provider.name.substring(0, 2).toUpperCase()}
+                        <div className="shrink-0 flex items-center justify-center rounded-lg overflow-hidden shadow-xs">
+                          {getErpLogo(provider.id, "size-10 rounded-lg shrink-0")}
                         </div>
                         <Badge
                           variant={isConnected ? "success" : "secondary"}
@@ -876,7 +934,7 @@ export function ErpConnectionsPage() {
                           <Button
                             size="sm"
                             onClick={() => handleOpenConfig(provider)}
-                            className="w-full text-xs gap-1.5"
+                            className="w-full text-xs gap-1.5 font-medium"
                           >
                             <Plug className="size-3.5" />
                             Conectar
@@ -888,58 +946,6 @@ export function ErpConnectionsPage() {
                 );
               })}
           </div>
-        </TabsContent>
-
-        {/* Tab 3: Custom REST & Webhook */}
-        <TabsContent value="custom-rest" className="m-0 flex flex-col gap-4">
-          <Card className="border-border/80">
-            <CardHeader>
-              <CardTitle className="text-base flex items-center gap-2">
-                <Database className="size-4 text-purple-400" />
-                Integração REST Sob Medida (Seu Próprio ERP)
-              </CardTitle>
-              <CardDescription className="text-xs">
-                Utilize endpoints REST seguros para comunicar seu sistema com o Hub em tempo real.
-              </CardDescription>
-            </CardHeader>
-            <CardContent className="flex flex-col gap-4">
-              {providers
-                .filter((p) => p.id === "custom_rest")
-                .map((provider) => (
-                  <div key={provider.id} className="flex flex-col gap-4">
-                    <div className="grid gap-3 sm:grid-cols-2">
-                      {provider.fields.map((field) => (
-                        <div key={field.key} className="flex flex-col gap-1.5">
-                          <label className="text-xs font-semibold text-foreground">{field.label}</label>
-                          <Input
-                            type={field.type}
-                            placeholder={field.placeholder}
-                            value={formFields[field.key] || field.value || ""}
-                            onChange={(e) => handleFieldChange(field.key, e.target.value)}
-                            className="text-xs font-mono"
-                          />
-                          {field.description && (
-                            <span className="text-[11px] text-muted-foreground">{field.description}</span>
-                          )}
-                        </div>
-                      ))}
-                    </div>
-
-                    <div className="flex justify-end pt-3 border-t border-border/60">
-                      <Button
-                        size="sm"
-                        onClick={handleTestConnection}
-                        disabled={isTesting}
-                        className="text-xs gap-1.5 bg-purple-600 hover:bg-purple-700 text-white"
-                      >
-                        <Zap className={`size-3.5 ${isTesting ? "animate-spin" : ""}`} />
-                        {isTesting ? "Validando Endpoints..." : "Salvar Configuração REST"}
-                      </Button>
-                    </div>
-                  </div>
-                ))}
-            </CardContent>
-          </Card>
         </TabsContent>
       </Tabs>
 
