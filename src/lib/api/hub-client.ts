@@ -132,52 +132,71 @@ function parseOrderFromApi(raw: any): CustomerOrderDto {
     (raw.fileName ? raw.fileName.split("_")[0] : `ORD-${raw.id?.slice(0, 8) || "100"}`);
 
   const items = itemsSection.map((item: any, idx: number) => {
+    const rawProd = typeof item.produto === "object" && item.produto !== null ? item.produto : (typeof item.Produto === "object" && item.Produto !== null ? item.Produto : null);
+    const rawProduct = typeof item.product === "object" && item.product !== null ? item.product : (typeof item.Product === "object" && item.Product !== null ? item.Product : null);
+    const rawItem = typeof item.item === "object" && item.item !== null ? item.item : (typeof item.Item === "object" && item.Item !== null ? item.Item : null);
+
+    const extractStr = (val: any): string => {
+      if (typeof val === "string" && val.trim() && val.trim() !== "[object Object]") {
+        return val.trim();
+      }
+      if (typeof val === "number" && !isNaN(val)) {
+        return String(val);
+      }
+      return "";
+    };
+
     const sku =
-      item.Sku ||
-      item.sku ||
-      item.SKU ||
-      item.CodigoBarras ||
-      item.codigoBarras ||
-      item.Codigo ||
-      item.codigo ||
-      item.Referencia ||
-      item.referencia ||
+      extractStr(item.Sku || item.sku || item.SKU || item.CodigoBarras || item.codigoBarras || item.Codigo || item.codigo || item.Referencia || item.referencia) ||
+      extractStr(rawProd?.sku || rawProd?.Sku || rawProd?.codigo || rawProd?.Codigo || rawProd?.codigoBarras || rawProd?.CodigoBarras || rawProd?.referencia || rawProd?.Referencia) ||
+      extractStr(rawProduct?.sku || rawProduct?.Sku || rawProduct?.code || rawProduct?.id) ||
+      extractStr(rawItem?.sku || rawItem?.codigo) ||
       `SKU-${idx + 1}`;
 
     const reference =
-      item.Referencia ||
-      item.referencia ||
-      item.CodProduto ||
-      item.codProduto ||
-      item.Codigo ||
-      item.codigo ||
-      item.Produto ||
-      item.produto ||
+      extractStr(item.Referencia || item.referencia || item.CodProduto || item.codProduto || item.Codigo || item.codigo) ||
+      extractStr(rawProd?.referencia || rawProd?.Referencia || rawProd?.codigo || rawProd?.Codigo || rawProd?.codProduto || rawProd?.CodProduto) ||
+      extractStr(rawProduct?.reference || rawProduct?.Reference || rawProduct?.code) ||
       sku;
 
-    const color = item.Cor || item.cor || item.NomeCor || item.nomeCor || "";
-    const size = item.Tamanho || item.tamanho || item.Grade || item.grade || "";
+    const color = extractStr(
+      item.Cor || item.cor || item.NomeCor || item.nomeCor || item.descricaoCor || item.DescricaoCor ||
+      rawProd?.cor || rawProd?.Cor || rawProd?.nomeCor || rawProd?.NomeCor
+    );
+
+    const size = extractStr(
+      item.Tamanho || item.tamanho || item.Grade || item.grade || item.Tam || item.tam ||
+      rawProd?.tamanho || rawProd?.Tamanho || rawProd?.grade || rawProd?.Grade
+    );
+
     const variation =
-      item.Variacao ||
-      item.variacao ||
-      item.NomeVariacao ||
-      item.nomeVariacao ||
+      extractStr(item.Variacao || item.variacao || item.NomeVariacao || item.nomeVariacao || rawProd?.variacao || rawProd?.nomeVariacao) ||
       [color, size].filter(Boolean).join(" - ") ||
       "";
 
     const title =
-      item.Descricao ||
-      item.descricao ||
-      item.DescricaoProduto ||
-      item.descricaoProduto ||
-      item.NomeProduto ||
-      item.nomeProduto ||
-      item.Produto ||
-      item.produto ||
-      item.nome ||
-      item.Nome ||
-      item.title ||
-      item.Title ||
+      extractStr(
+        item.Descricao || item.descricao ||
+        item.DescricaoProduto || item.descricaoProduto ||
+        item.NomeProduto || item.nomeProduto ||
+        item.nome || item.Nome ||
+        item.name || item.Name ||
+        item.title || item.Title ||
+        item.productName || item.ProductName ||
+        item.productTitle || item.ProductTitle ||
+        item.itemName || item.ItemName ||
+        item.itemTitle || item.ItemTitle ||
+        rawProd?.descricao || rawProd?.Descricao ||
+        rawProd?.descricaoProduto || rawProd?.DescricaoProduto ||
+        rawProd?.nome || rawProd?.Nome ||
+        rawProd?.nomeProduto || rawProd?.NomeProduto ||
+        rawProd?.title || rawProd?.Title ||
+        rawProd?.name || rawProd?.Name ||
+        rawProduct?.name || rawProduct?.title || rawProduct?.description ||
+        rawItem?.descricao || rawItem?.nome || rawItem?.title ||
+        (typeof item.Produto === "string" ? item.Produto : "") ||
+        (typeof item.produto === "string" ? item.produto : "")
+      ) ||
       reference ||
       sku;
 
@@ -887,7 +906,7 @@ export async function fetchProductCatalog(customerId: string, search?: string): 
     // 1. Consulta /api/admin/products/catalog
     try {
       const { data } = await http.get("/api/admin/products/catalog", {
-        params: { customerId, search, pageIndex: 0, pageSize: 200 },
+        params: { customerId, search, pageIndex: 0, pageSize: 500 },
       });
       items = data?.items || (Array.isArray(data) ? data : []);
     } catch {
@@ -898,7 +917,30 @@ export async function fetchProductCatalog(customerId: string, search?: string): 
     if (items.length === 0) {
       try {
         const { data } = await http.get("/api/product/catalog", {
-          params: { search, pageIndex: 0, pageSize: 200 },
+          params: { search, pageIndex: 0, pageSize: 500 },
+        });
+        items = data?.items || (Array.isArray(data) ? data : []);
+      } catch {
+        // ignore
+      }
+    }
+
+    // 3. Fallback: Consulta esteira de alterações / pipeline changes se o catálogo consolidado ainda não tiver produtos
+    if (items.length === 0) {
+      try {
+        const { data } = await http.get("/api/admin/products/pipeline/changes", {
+          params: { customerId, pageIndex: 0, pageSize: 500 },
+        });
+        items = data?.items || (Array.isArray(data) ? data : []);
+      } catch {
+        // ignore
+      }
+    }
+
+    if (items.length === 0) {
+      try {
+        const { data } = await http.get("/api/product/pipeline/changes", {
+          params: { pageIndex: 0, pageSize: 500 },
         });
         items = data?.items || (Array.isArray(data) ? data : []);
       } catch {
@@ -1217,12 +1259,32 @@ export function calculateSalesMetrics(orders: CustomerOrderDto[], catalogItems?:
   const catalogMap = new Map<string, CatalogItemDto>();
   if (catalogItems && Array.isArray(catalogItems)) {
     catalogItems.forEach((c) => {
-      if (c.reference) catalogMap.set(c.reference.toLowerCase().trim(), c);
-      if (c.sku) catalogMap.set(c.sku.toLowerCase().trim(), c);
-      if (c.id) catalogMap.set(c.id.toLowerCase().trim(), c);
+      const rawRef = (c.reference || "").toLowerCase().trim();
+      const rawSku = (c.sku || "").toLowerCase().trim();
+      const rawId = (c.id || "").toLowerCase().trim();
+
+      if (rawRef) {
+        catalogMap.set(rawRef, c);
+        catalogMap.set(rawRef.replace(/[^a-z0-9]/g, ""), c);
+      }
+      if (rawSku) {
+        catalogMap.set(rawSku, c);
+        catalogMap.set(rawSku.replace(/[^a-z0-9]/g, ""), c);
+      }
+      if (rawId) {
+        catalogMap.set(rawId, c);
+      }
       c.variations?.forEach((v) => {
-        if (v.sku) catalogMap.set(v.sku.toLowerCase().trim(), c);
-        if (v.barcode) catalogMap.set(v.barcode.toLowerCase().trim(), c);
+        const vSku = (v.sku || "").toLowerCase().trim();
+        const vBarcode = (v.barcode || "").toLowerCase().trim();
+        if (vSku) {
+          catalogMap.set(vSku, c);
+          catalogMap.set(vSku.replace(/[^a-z0-9]/g, ""), c);
+        }
+        if (vBarcode) {
+          catalogMap.set(vBarcode, c);
+          catalogMap.set(vBarcode.replace(/[^a-z0-9]/g, ""), c);
+        }
       });
     });
   }
@@ -1273,25 +1335,45 @@ export function calculateSalesMetrics(orders: CustomerOrderDto[], catalogItems?:
     o.items?.forEach((item) => {
       const refKey = (item.reference || "").toLowerCase().trim();
       const skuKey = (item.sku || "").toLowerCase().trim();
-      const catItem = catalogMap.get(refKey) || catalogMap.get(skuKey);
+      const cleanRefKey = refKey.replace(/[^a-z0-9]/g, "");
+      const cleanSkuKey = skuKey.replace(/[^a-z0-9]/g, "");
+      const prefixSku = skuKey.split(/[-_.]/)[0];
+      const prefixRef = refKey.split(/[-_.]/)[0];
+
+      const catItem =
+        catalogMap.get(refKey) ||
+        catalogMap.get(skuKey) ||
+        (cleanRefKey ? catalogMap.get(cleanRefKey) : undefined) ||
+        (cleanSkuKey ? catalogMap.get(cleanSkuKey) : undefined) ||
+        (prefixSku ? catalogMap.get(prefixSku) : undefined) ||
+        (prefixRef ? catalogMap.get(prefixRef) : undefined);
 
       const resolvedRef = item.reference || catItem?.reference || item.sku;
       const rawItemTitle = cleanEncodingText(item.title);
       const rawCatTitle = cleanEncodingText(catItem?.title);
 
+      const isValidTitle = (t: string | undefined): boolean => {
+        if (!t) return false;
+        const s = t.trim();
+        if (!s || s === "[object Object]" || s === "undefined" || s === "null") return false;
+        const sLower = s.toLowerCase();
+        if (sLower === refKey || sLower === skuKey || sLower === cleanRefKey || sLower === cleanSkuKey) return false;
+        if (sLower === `produto ${refKey}` || sLower === `produto ${skuKey}`) return false;
+        if (sLower === "produto sem título" || sLower === "produto sem titulo") return false;
+        return true;
+      };
+
       let resolvedTitle = "";
-      if (rawCatTitle && rawCatTitle !== resolvedRef && !rawCatTitle.startsWith("Produto ")) {
+      if (isValidTitle(rawCatTitle)) {
         resolvedTitle = rawCatTitle;
-      } else if (rawItemTitle && rawItemTitle !== resolvedRef && rawItemTitle !== item.sku && !rawItemTitle.startsWith("Produto ")) {
-        resolvedTitle = rawItemTitle;
-      } else if (rawCatTitle && rawCatTitle !== resolvedRef) {
-        resolvedTitle = rawCatTitle;
-      } else if (rawItemTitle && rawItemTitle !== resolvedRef) {
+      } else if (isValidTitle(rawItemTitle)) {
         resolvedTitle = rawItemTitle;
       } else if (catItem?.brand && catItem.brand !== "Geral") {
-        resolvedTitle = `${catItem.brand} - Ref ${resolvedRef}`;
+        resolvedTitle = `${catItem.brand} - ${resolvedRef}`;
       } else if (catItem?.category && catItem.category !== "Geral") {
-        resolvedTitle = `${catItem.category} - Ref ${resolvedRef}`;
+        resolvedTitle = `${catItem.category} - ${resolvedRef}`;
+      } else if (rawItemTitle && rawItemTitle !== "[object Object]") {
+        resolvedTitle = rawItemTitle;
       } else {
         resolvedTitle = `Produto ${resolvedRef}`;
       }
@@ -1317,14 +1399,17 @@ export function calculateSalesMetrics(orders: CustomerOrderDto[], catalogItems?:
       existing.revenue += itemRev;
 
       // Se o título atual era apenas o código/referência mas encontramos um título mais rico
-      if (existing.title === `Produto ${resolvedRef}` && resolvedTitle !== `Produto ${resolvedRef}`) {
+      if (
+        (!isValidTitle(existing.title) || existing.title.startsWith("Produto ")) &&
+        isValidTitle(resolvedTitle)
+      ) {
         existing.title = resolvedTitle;
       }
 
       // Rastreia variações vendidas deste produto
       let varName = cleanEncodingText(item.variation || [item.color, item.size].filter(Boolean).join(" - "));
       if (!varName || varName === "Padrão") {
-        const matchingVar = catItem?.variations?.find((v) => v.sku.toLowerCase() === skuKey);
+        const matchingVar = catItem?.variations?.find((v) => v.sku.toLowerCase() === skuKey || v.sku.toLowerCase() === cleanSkuKey);
         if (matchingVar) {
           varName = cleanEncodingText(matchingVar.variationName || [matchingVar.color, matchingVar.size].filter(Boolean).join(" - ") || matchingVar.sku);
         }
