@@ -1,4 +1,5 @@
 import { useState, useMemo, useEffect } from "react";
+import { useQuery, useQueryClient } from "@tanstack/react-query";
 import {
   ClipboardList,
   Search,
@@ -37,6 +38,8 @@ import {
 } from "@/components/ui/dialog";
 import { ConcurrencyBanner } from "@/components/shared/concurrency-banner";
 import { StatusBadge } from "@/components/shared/status-badge";
+import { TableSkeleton } from "@/components/shared/table-skeleton";
+import { DataErrorState } from "@/components/shared/data-error-state";
 import { useConcurrencyLock } from "@/hooks/use-concurrency-lock";
 import { useAuth } from "@/app/providers/auth-provider";
 import { fetchCustomerOrders, saveCustomerOrder } from "@/lib/api/hub-client";
@@ -69,34 +72,39 @@ const ORDER_STATUS_FILTER_OPTIONS = [
 
 export function OrdersPage() {
   const { user } = useAuth();
-  const [orders, setOrders] = useState<CustomerOrderDto[]>([]);
+  const queryClient = useQueryClient();
   const [searchTerm, setSearchTerm] = useState("");
   const [channelFilter, setChannelFilter] = useState("all");
   const [statusFilter, setStatusFilter] = useState("all");
   const [currentPage, setCurrentPage] = useState(1);
-  const [isLoadingOrders, setIsLoadingOrders] = useState(false);
 
-  const loadOrders = async (showToast = false) => {
-    if (!user?.customerId) return;
-    setIsLoadingOrders(true);
+  // Consulta pedidos via React Query
+  const {
+    data: orders = [],
+    isLoading: isLoadingOrders,
+    isError: isOrdersError,
+    isFetching: isFetchingOrders,
+    refetch: refetchOrders,
+  } = useQuery({
+    queryKey: ["customer-orders", user?.customerId],
+    queryFn: () => (user?.customerId ? fetchCustomerOrders(user.customerId) : Promise.resolve([])),
+    enabled: Boolean(user?.customerId),
+    staleTime: 30000,
+  });
+
+  // Reseta paginação ao alterar qualquer filtro de pesquisa
+  useEffect(() => {
+    setCurrentPage(1);
+  }, [searchTerm, channelFilter, statusFilter]);
+
+  const handleManualSync = async () => {
     try {
-      const data = await fetchCustomerOrders(user.customerId);
-      setOrders(data || []);
-      if (showToast) {
-        toast.success(`Pedidos sincronizados! (${data?.length || 0} encontrados)`);
-      }
-    } catch (error) {
-      if (showToast) {
-        toast.error("Erro ao sincronizar pedidos da API de produção.");
-      }
-    } finally {
-      setIsLoadingOrders(false);
+      await refetchOrders();
+      toast.success("Pedidos sincronizados com sucesso!");
+    } catch {
+      toast.error("Erro ao sincronizar pedidos da API de produção.");
     }
   };
-
-  useEffect(() => {
-    loadOrders();
-  }, [user?.customerId]);
 
   // Order editor state
   const [selectedOrder, setSelectedOrder] = useState<CustomerOrderDto | null>(null);
@@ -190,7 +198,7 @@ export function OrdersPage() {
       }
 
       await saveCustomerOrder(selectedOrder.id, updatedJsonString);
-      setOrders((prev) => prev.map((o) => (o.id === updatedOrderDto.id ? updatedOrderDto : o)));
+      queryClient.invalidateQueries({ queryKey: ["customer-orders", user?.customerId] });
       toast.success(`Pedido #${updatedOrderDto.marketplaceOrderId} salvo na API de produção!`);
       handleCloseOrder();
     } catch {
@@ -215,14 +223,14 @@ export function OrdersPage() {
         </div>
 
         <Button
-          onClick={() => loadOrders(true)}
-          disabled={isLoadingOrders}
+          onClick={handleManualSync}
+          disabled={isFetchingOrders}
           variant="outline"
           size="sm"
           className="self-start sm:self-auto gap-1.5"
         >
-          <RefreshCw className={`size-3.5 ${isLoadingOrders ? "animate-spin" : ""}`} />
-          Sincronizar Pedidos
+          <RefreshCw className={`size-3.5 ${isFetchingOrders ? "animate-spin" : ""}`} />
+          {isFetchingOrders ? "Sincronizando..." : "Sincronizar Pedidos"}
         </Button>
       </div>
 
@@ -321,30 +329,30 @@ export function OrdersPage() {
       </Card>
 
       {/* Orders Table */}
-      <Card className="border-border/80">
-        <CardContent className="p-0">
-          {isLoadingOrders ? (
-            <div className="p-16 flex flex-col items-center justify-center gap-3 text-center">
-              <div className="relative">
-                <RefreshCw className="size-8 animate-spin text-primary" />
-                <span className="absolute inset-0 rounded-full bg-primary/20 animate-ping" />
-              </div>
-              <p className="text-sm font-semibold text-foreground mt-2">Processando e sincronizando pedidos com o Hub Central...</p>
-              <p className="text-xs text-muted-foreground max-w-sm">
-                Conectando ao banco de dados em nuvem do Hub. Isso pode levar alguns segundos dependendo do volume de dados.
-              </p>
+      {isOrdersError ? (
+        <DataErrorState
+          title="Erro ao sincronizar pedidos"
+          message="Não foi possível obter a lista de pedidos da API de produção. Verifique a conexão com o Hub."
+          onRetry={handleManualSync}
+          isRetrying={isFetchingOrders}
+        />
+      ) : (
+        <Card className="border-border/80">
+          <CardHeader className="p-4 pb-2 flex flex-row items-center justify-between border-b border-border/50">
+            <div>
+              <CardTitle className="text-sm font-semibold">Listagem de Pedidos</CardTitle>
+              <CardDescription className="text-xs">
+                Total de <strong>{filteredOrders.length}</strong> pedido{filteredOrders.length !== 1 ? "s" : ""}{" "}
+                filtrado{filteredOrders.length !== 1 ? "s" : ""}
+              </CardDescription>
             </div>
-          ) : paginatedOrders.length === 0 ? (
-            <div className="p-12 flex flex-col items-center justify-center gap-3 text-muted-foreground">
-              <PackageX className="size-8 text-muted-foreground/60" />
-              <p className="text-sm font-medium text-foreground">Nenhum pedido encontrado</p>
-              <p className="text-xs text-muted-foreground">
-                {searchTerm || channelFilter !== "all" || statusFilter !== "all"
-                  ? "Tente ajustar os filtros de busca."
-                  : "Aguardando novos pedidos dos canais de venda integrados."}
-              </p>
-            </div>
-          ) : (
+            {filteredOrders.length > 0 && !isLoadingOrders && (
+              <span className="text-xs text-muted-foreground">
+                Exibindo {(currentPage - 1) * PAGE_SIZE + 1} a {Math.min(currentPage * PAGE_SIZE, filteredOrders.length)} de {filteredOrders.length}
+              </span>
+            )}
+          </CardHeader>
+          <CardContent className="p-0">
             <Table>
               <TableHeader>
                 <TableRow>
@@ -360,7 +368,28 @@ export function OrdersPage() {
                 </TableRow>
               </TableHeader>
               <TableBody>
-                {paginatedOrders.map((order) => (
+                {isLoadingOrders ? (
+                  <TableSkeleton
+                    rows={8}
+                    columns={9}
+                    columnWidths={["80px", "100px", "110px", "140px", "40px", "80px", "100px", "100px", "70px"]}
+                  />
+                ) : paginatedOrders.length === 0 ? (
+                  <TableRow>
+                    <TableCell colSpan={9} className="h-48 text-center">
+                      <div className="flex flex-col items-center justify-center gap-2 text-muted-foreground">
+                        <PackageX className="size-8 text-muted-foreground/60" />
+                        <p className="text-sm font-medium text-foreground">Nenhum pedido encontrado</p>
+                        <p className="text-xs text-muted-foreground">
+                          {searchTerm || channelFilter !== "all" || statusFilter !== "all"
+                            ? "Tente ajustar os filtros de busca."
+                            : "Aguardando novos pedidos dos canais de venda integrados."}
+                        </p>
+                      </div>
+                    </TableCell>
+                  </TableRow>
+                ) : (
+                  paginatedOrders.map((order) => (
                   <TableRow key={order.id} className="hover:bg-muted/30">
                     <TableCell className="text-xs text-muted-foreground whitespace-nowrap">
                       {formatDateTime(order.createdAtUtc)}
@@ -407,44 +436,45 @@ export function OrdersPage() {
                       </Button>
                     </TableCell>
                   </TableRow>
-                ))}
+                ))
+              )}
               </TableBody>
             </Table>
-          )}
-        </CardContent>
+          </CardContent>
 
-        {filteredOrders.length > PAGE_SIZE && (
-          <CardFooter className="p-4 border-t border-border flex items-center justify-between">
-            <span className="text-xs text-muted-foreground">
-              Mostrando {(currentPage - 1) * PAGE_SIZE + 1} a{" "}
-              {Math.min(currentPage * PAGE_SIZE, filteredOrders.length)} de {filteredOrders.length} pedidos
-            </span>
-            <div className="flex items-center gap-1.5">
-              <Button
-                variant="outline"
-                size="icon"
-                className="size-8"
-                onClick={() => setCurrentPage((p) => Math.max(1, p - 1))}
-                disabled={currentPage === 1}
-              >
-                <ChevronLeft className="size-4" />
-              </Button>
-              <span className="text-xs font-medium px-2">
-                {currentPage} / {totalPages}
+          {filteredOrders.length > PAGE_SIZE && (
+            <CardFooter className="p-4 border-t border-border flex items-center justify-between">
+              <span className="text-xs text-muted-foreground">
+                Mostrando {(currentPage - 1) * PAGE_SIZE + 1} a{" "}
+                {Math.min(currentPage * PAGE_SIZE, filteredOrders.length)} de {filteredOrders.length} pedidos
               </span>
-              <Button
-                variant="outline"
-                size="icon"
-                className="size-8"
-                onClick={() => setCurrentPage((p) => Math.min(totalPages, p + 1))}
-                disabled={currentPage === totalPages}
-              >
-                <ChevronRight className="size-4" />
-              </Button>
-            </div>
-          </CardFooter>
-        )}
-      </Card>
+              <div className="flex items-center gap-1.5">
+                <Button
+                  variant="outline"
+                  size="icon"
+                  className="size-8"
+                  onClick={() => setCurrentPage((p) => Math.max(1, p - 1))}
+                  disabled={currentPage === 1}
+                >
+                  <ChevronLeft className="size-4" />
+                </Button>
+                <span className="text-xs font-medium px-2">
+                  {currentPage} / {totalPages}
+                </span>
+                <Button
+                  variant="outline"
+                  size="icon"
+                  className="size-8"
+                  onClick={() => setCurrentPage((p) => Math.min(totalPages, p + 1))}
+                  disabled={currentPage === totalPages}
+                >
+                  <ChevronRight className="size-4" />
+                </Button>
+              </div>
+            </CardFooter>
+          )}
+        </Card>
+      )}
 
       {/* Order Details & Editor Modal */}
       {selectedOrder && (

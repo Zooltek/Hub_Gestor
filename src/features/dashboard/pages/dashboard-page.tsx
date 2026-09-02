@@ -1,5 +1,6 @@
-import { useState, useEffect, useMemo } from "react";
+import { useState, useMemo } from "react";
 import { RefreshCw, Download, Sparkles } from "lucide-react";
+import { useQuery } from "@tanstack/react-query";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { SalesOverviewCards } from "../components/sales-overview-cards";
@@ -16,55 +17,71 @@ import {
   calculateSalesMetrics,
   generateEvolutionPoints,
 } from "@/lib/api/hub-client";
-import type {
-  CustomerOrderDto,
-  ProductBatchDto,
-  CatalogItemDto,
-  IntegrationHealthStatus,
-} from "@/lib/api/types";
+import type { IntegrationHealthStatus } from "@/lib/api/types";
+import { exportSalesReportToCsv } from "@/lib/csv-export";
 import { toast } from "sonner";
 
 export function DashboardPage() {
   const { user } = useAuth();
   const [period, setPeriod] = useState<PeriodFilterOption>("7d");
-  const [isRefreshing, setIsRefreshing] = useState(false);
-  const [orders, setOrders] = useState<CustomerOrderDto[]>([]);
-  const [batches, setBatches] = useState<ProductBatchDto[]>([]);
-  const [catalog, setCatalog] = useState<CatalogItemDto[]>([]);
-  const [health, setHealth] = useState<IntegrationHealthStatus | null>(null);
 
-  const loadData = async (showToast = false) => {
-    if (!user?.customerId) return;
-    setIsRefreshing(true);
+  // React Query para pedidos
+  const {
+    data: orders = [],
+    isLoading: isLoadingOrders,
+    isFetching: isFetchingOrders,
+    refetch: refetchOrders,
+  } = useQuery({
+    queryKey: ["dashboard-orders", user?.customerId],
+    queryFn: () => (user?.customerId ? fetchCustomerOrders(user.customerId) : Promise.resolve([])),
+    enabled: Boolean(user?.customerId),
+    staleTime: 30000,
+  });
+
+  // React Query para lotes
+  const {
+    data: batches = [],
+    isLoading: isLoadingBatches,
+    isFetching: isFetchingBatches,
+    refetch: refetchBatches,
+  } = useQuery({
+    queryKey: ["dashboard-batches", user?.customerId],
+    queryFn: () => (user?.customerId ? fetchProductBatches(user.customerId) : Promise.resolve([])),
+    enabled: Boolean(user?.customerId),
+    staleTime: 30000,
+  });
+
+  // React Query para catálogo
+  const {
+    data: catalog = [],
+    isLoading: isLoadingCatalog,
+    isFetching: isFetchingCatalog,
+    refetch: refetchCatalog,
+  } = useQuery({
+    queryKey: ["dashboard-catalog", user?.customerId],
+    queryFn: () => (user?.customerId ? fetchProductCatalog(user.customerId).catch(() => []) : Promise.resolve([])),
+    enabled: Boolean(user?.customerId),
+    staleTime: 60000,
+  });
+
+  // React Query para status de saúde da integração
+  const { data: health } = useQuery({
+    queryKey: ["dashboard-health", batches.length, orders.length],
+    queryFn: () => fetchIntegrationHealth(batches, orders),
+    enabled: Boolean(user?.customerId),
+    staleTime: 30000,
+  });
+
+  const isRefreshing = isFetchingOrders || isFetchingBatches || isFetchingCatalog;
+
+  const handleRefreshAll = async () => {
     try {
-      const [fetchedOrders, fetchedBatches, fetchedCatalog] = await Promise.all([
-        fetchCustomerOrders(user.customerId),
-        fetchProductBatches(user.customerId),
-        fetchProductCatalog(user.customerId).catch(() => []),
-      ]);
-
-      setOrders(fetchedOrders);
-      setBatches(fetchedBatches);
-      setCatalog(fetchedCatalog || []);
-
-      const computedHealth = await fetchIntegrationHealth(fetchedBatches, fetchedOrders);
-      setHealth(computedHealth);
-
-      if (showToast) {
-        toast.success("Dados do Hub de Produção atualizados com sucesso!");
-      }
-    } catch (error) {
-      if (showToast) {
-        toast.error("Erro ao atualizar métricas da API de Produção.");
-      }
-    } finally {
-      setIsRefreshing(false);
+      await Promise.all([refetchOrders(), refetchBatches(), refetchCatalog()]);
+      toast.success("Métricas atualizadas com sucesso!");
+    } catch {
+      toast.error("Erro ao sincronizar métricas da API de Produção.");
     }
   };
-
-  useEffect(() => {
-    loadData();
-  }, [user?.customerId]);
 
   const { kpis, topProducts, channels } = useMemo(() => {
     return calculateSalesMetrics(orders, catalog);
@@ -73,6 +90,19 @@ export function DashboardPage() {
   const evolutionData = useMemo(() => {
     return generateEvolutionPoints(orders, period);
   }, [orders, period]);
+
+  const handleExportReport = () => {
+    if (orders.length === 0 && topProducts.length === 0) {
+      toast.warning("Não há pedidos ou produtos para exportar no período atual.");
+      return;
+    }
+    try {
+      exportSalesReportToCsv(orders, topProducts, user?.customerName || user?.displayName || "Amura Teste");
+      toast.success("Relatório gerencial CSV exportado com sucesso!");
+    } catch {
+      toast.error("Falha ao exportar relatório.");
+    }
+  };
 
   const defaultHealth: IntegrationHealthStatus = {
     desktop: {
@@ -122,7 +152,7 @@ export function DashboardPage() {
           <Button
             variant="outline"
             size="sm"
-            onClick={() => loadData(true)}
+            onClick={handleRefreshAll}
             disabled={isRefreshing}
             className="text-xs"
           >
@@ -133,11 +163,11 @@ export function DashboardPage() {
           <Button
             variant="secondary"
             size="sm"
-            className="text-xs"
-            onClick={() => toast.info("Relatório gerencial exportado com dados da produção!")}
+            className="text-xs gap-1.5"
+            onClick={handleExportReport}
           >
-            <Download className="size-3.5 mr-1.5" />
-            Exportar Relatório
+            <Download className="size-3.5" />
+            Exportar Relatório (.csv)
           </Button>
         </div>
       </div>

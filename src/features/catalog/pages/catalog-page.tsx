@@ -51,6 +51,8 @@ import {
 } from "@/lib/api/hub-client";
 import type { CatalogItemDto, CatalogItemVariationDto } from "@/lib/api/types";
 import { formatCurrency, formatDateTime, formatNumber } from "@/lib/utils";
+import { useDebounce } from "@/hooks/use-debounce";
+import { TableSkeleton } from "@/components/shared/table-skeleton";
 import { toast } from "sonner";
 
 const PAGE_SIZE = 10;
@@ -59,6 +61,7 @@ export function CatalogPage() {
   const { user } = useAuth();
   const [catalog, setCatalog] = useState<CatalogItemDto[]>([]);
   const [searchTerm, setSearchTerm] = useState("");
+  const debouncedSearchTerm = useDebounce(searchTerm, 400);
   const [categoryFilter, setCategoryFilter] = useState("all");
   const [onlyPending, setOnlyPending] = useState(false);
   const [currentPage, setCurrentPage] = useState(1);
@@ -121,7 +124,7 @@ export function CatalogPage() {
     setIsLoading(true);
     try {
       const [data, plugData] = await Promise.all([
-        fetchProductCatalog(user.customerId, searchTerm),
+        fetchProductCatalog(user.customerId, debouncedSearchTerm),
         fetchCustomerPlugins(user.customerId).catch(() => []),
       ]);
       setCatalog(data || []);
@@ -140,7 +143,12 @@ export function CatalogPage() {
 
   useEffect(() => {
     loadCatalog();
-  }, [user?.customerId, searchTerm]);
+  }, [user?.customerId, debouncedSearchTerm]);
+
+  // Reseta paginação ao alterar filtros ou busca
+  useEffect(() => {
+    setCurrentPage(1);
+  }, [debouncedSearchTerm, categoryFilter, onlyPending]);
 
   const categories = useMemo(() => Array.from(new Set(catalog.map((i) => i.category))), [catalog]);
 
@@ -468,7 +476,10 @@ export function CatalogPage() {
             <Button
               variant={onlyPending ? "secondary" : "outline"}
               size="sm"
-              onClick={() => setOnlyPending(!onlyPending)}
+              onClick={() => {
+                setOnlyPending(!onlyPending);
+                setCurrentPage(1);
+              }}
               className="text-xs h-9"
             >
               {onlyPending ? "Apenas com Alertas" : "Todos os Status"}
@@ -479,52 +490,66 @@ export function CatalogPage() {
 
       {/* Products Table */}
       <Card className="border-border/80">
+        <CardHeader className="p-4 pb-2 flex flex-row items-center justify-between border-b border-border/50">
+          <div>
+            <CardTitle className="text-sm font-semibold">Produtos Cadastrados</CardTitle>
+            <CardDescription className="text-xs">
+              Total de <strong>{filteredCatalog.length}</strong> produto{filteredCatalog.length !== 1 ? "s" : ""}{" "}
+              filtrado{filteredCatalog.length !== 1 ? "s" : ""}
+            </CardDescription>
+          </div>
+          {filteredCatalog.length > 0 && !isLoading && (
+            <span className="text-xs text-muted-foreground">
+              Exibindo {(currentPage - 1) * PAGE_SIZE + 1} a {Math.min(currentPage * PAGE_SIZE, filteredCatalog.length)} de {filteredCatalog.length}
+            </span>
+          )}
+        </CardHeader>
         <CardContent className="p-0">
-          {isLoading ? (
-            <div className="p-16 flex flex-col items-center justify-center gap-3 text-center">
-              <div className="relative">
-                <RefreshCw className="size-8 animate-spin text-primary" />
-                <span className="absolute inset-0 rounded-full bg-primary/20 animate-ping" />
-              </div>
-              <p className="text-sm font-semibold text-foreground mt-2">Processando e sincronizando catálogo com o Hub Central...</p>
-              <p className="text-xs text-muted-foreground max-w-sm">
-                Buscando produtos consolidados e variações de estoque. Aguarde um instante.
-              </p>
-            </div>
-          ) : paginatedCatalog.length === 0 ? (
-            <div className="p-12 flex flex-col items-center justify-center gap-3 text-muted-foreground">
-              <PackageX className="size-8 text-muted-foreground/60" />
-              <p className="text-sm font-medium text-foreground">Nenhum produto encontrado</p>
-              <p className="text-xs text-muted-foreground">
-                {searchTerm || categoryFilter !== "all"
-                  ? "Tente ajustar os termos de pesquisa."
-                  : "Nenhum produto cadastrado no catálogo."}
-              </p>
-            </div>
-          ) : (
-            <Table>
-              <TableHeader>
+          <Table>
+            <TableHeader>
+              <TableRow>
+                <TableHead className="w-10 text-center">
+                  <button onClick={handleSelectAll} className="cursor-pointer">
+                    {selectedSkus.length === filteredCatalog.length && filteredCatalog.length > 0 ? (
+                      <CheckSquare className="size-4 text-primary" />
+                    ) : (
+                      <Square className="size-4 text-muted-foreground" />
+                    )}
+                  </button>
+                </TableHead>
+                <TableHead>SKU / Referência</TableHead>
+                <TableHead>Título do Produto</TableHead>
+                <TableHead>Categoria</TableHead>
+                <TableHead className="text-right">Preço</TableHead>
+                <TableHead className="text-center">Estoque Total</TableHead>
+                <TableHead className="text-center">Variações</TableHead>
+                <TableHead>Canais / Status</TableHead>
+                <TableHead className="text-right">Ações</TableHead>
+              </TableRow>
+            </TableHeader>
+            <TableBody>
+              {isLoading ? (
+                <TableSkeleton
+                  rows={8}
+                  columns={9}
+                  columnWidths={["30px", "110px", "180px", "100px", "70px", "60px", "60px", "120px", "70px"]}
+                />
+              ) : paginatedCatalog.length === 0 ? (
                 <TableRow>
-                  <TableHead className="w-10 text-center">
-                    <button onClick={handleSelectAll} className="cursor-pointer">
-                      {selectedSkus.length === filteredCatalog.length && filteredCatalog.length > 0 ? (
-                        <CheckSquare className="size-4 text-primary" />
-                      ) : (
-                        <Square className="size-4 text-muted-foreground" />
-                      )}
-                    </button>
-                  </TableHead>
-                  <TableHead>SKU / Referência</TableHead>
-                  <TableHead>Título do Produto</TableHead>
-                  <TableHead>Categoria</TableHead>
-                  <TableHead className="text-right">Preço</TableHead>
-                  <TableHead className="text-center">Estoque Total</TableHead>
-                  <TableHead>Canais / Status</TableHead>
-                  <TableHead className="text-right">Ações</TableHead>
+                  <TableCell colSpan={9} className="h-48 text-center">
+                    <div className="flex flex-col items-center justify-center gap-2 text-muted-foreground">
+                      <PackageX className="size-8 text-muted-foreground/60" />
+                      <p className="text-sm font-medium text-foreground">Nenhum produto encontrado</p>
+                      <p className="text-xs text-muted-foreground">
+                        {searchTerm || categoryFilter !== "all"
+                          ? "Tente ajustar os termos de pesquisa."
+                          : "Nenhum produto cadastrado no catálogo."}
+                      </p>
+                    </div>
+                  </TableCell>
                 </TableRow>
-              </TableHeader>
-              <TableBody>
-                {paginatedCatalog.map((item) => {
+              ) : (
+                paginatedCatalog.map((item) => {
                   const isSelected = selectedSkus.includes(item.sku);
 
                   return (
@@ -596,10 +621,10 @@ export function CatalogPage() {
                       </TableCell>
                     </TableRow>
                   );
-                })}
-              </TableBody>
-            </Table>
-          )}
+                })
+              )}
+            </TableBody>
+          </Table>
         </CardContent>
 
         {filteredCatalog.length > PAGE_SIZE && (
