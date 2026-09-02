@@ -51,17 +51,8 @@ const DEFAULT_AMURA_TESTE_USER: AuthUser = {
 const AuthContext = createContext<AuthContextType | undefined>(undefined);
 
 export function AuthProvider({ children }: { children: React.ReactNode }) {
-  const [user, setUser] = useState<AuthUser | null>(() => {
-    try {
-      const stored = localStorage.getItem(STORAGE_KEY);
-      if (stored) {
-        return JSON.parse(stored);
-      }
-    } catch {
-      // ignore
-    }
-    return DEFAULT_AMURA_TESTE_USER;
-  });
+  // Sempre inicia na tela de login por padrão (sem usuário pré-autenticado)
+  const [user, setUser] = useState<AuthUser | null>(null);
   const [isLoading, setIsLoading] = useState(false);
 
   useEffect(() => {

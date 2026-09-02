@@ -26,6 +26,9 @@ import {
   Copy,
   Check,
   ShoppingCart,
+  Users,
+  UserPlus,
+  Shield,
 } from "lucide-react";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -81,7 +84,7 @@ export function HelpPage() {
             <div className="relative">
               <Search className="absolute left-3 top-1/2 -translate-y-1/2 size-4 text-muted-foreground" />
               <Input
-                placeholder="Buscar no manual (ex: Bling, KPIs, Lotes)..."
+                placeholder="Buscar no manual (ex: Usuários, Bling, KPIs)..."
                 value={searchQuery}
                 onChange={(e) => setSearchQuery(e.target.value)}
                 className="pl-9 text-xs bg-background/80 backdrop-blur-xs border-primary/30 focus-visible:ring-primary"
@@ -93,7 +96,7 @@ export function HelpPage() {
 
       {/* Main Tabs */}
       <Tabs value={activeTab} onValueChange={setActiveTab} className="w-full flex flex-col gap-6">
-        <TabsList className="grid grid-cols-2 md:grid-cols-5 p-1 bg-muted/60 border border-border/80 h-auto">
+        <TabsList className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 p-1 bg-muted/60 border border-border/80 h-auto">
           <TabsTrigger value="dashboard-kpis" className="text-xs py-2.5 flex items-center gap-1.5 data-[state=active]:bg-card data-[state=active]:shadow-xs">
             <LayoutDashboard className="size-3.5 text-primary" />
             <span>1. KPIs & 4 Perguntas</span>
@@ -113,6 +116,10 @@ export function HelpPage() {
           <TabsTrigger value="orders-concurrency" className="text-xs py-2.5 flex items-center gap-1.5 data-[state=active]:bg-card data-[state=active]:shadow-xs">
             <ShieldCheck className="size-3.5 text-purple-400" />
             <span>5. Pedidos & Travas</span>
+          </TabsTrigger>
+          <TabsTrigger value="team-management" className="text-xs py-2.5 flex items-center gap-1.5 data-[state=active]:bg-card data-[state=active]:shadow-xs">
+            <Users className="size-3.5 text-sky-400" />
+            <span>6. Equipe & Usuários</span>
           </TabsTrigger>
         </TabsList>
 
@@ -870,6 +877,118 @@ Headers:
                     <li><strong>Auto-liberação por Inatividade</strong>: Se o operador fechar a janela ou ficar inativo por 2 minutos, o pedido é liberado automaticamente.</li>
                   </ul>
                 </div>
+              </div>
+            </CardContent>
+          </Card>
+        </TabsContent>
+
+        {/* ------------------------------------------------------------- */}
+        {/* SEÇÃO 6: GESTÃO DE EQUIPE, USUÁRIOS & PERFIS DE ACESSO        */}
+        {/* ------------------------------------------------------------- */}
+        <TabsContent value="team-management" className="m-0 flex flex-col gap-6">
+          <Card className="border-border/80 bg-card">
+            <CardHeader className="border-b border-border/50 pb-4">
+              <div className="flex items-center gap-2.5">
+                <div className="p-2 rounded-lg bg-sky-500/10 text-sky-400">
+                  <Users className="size-5" />
+                </div>
+                <div>
+                  <CardTitle className="text-lg font-bold">
+                    Gestão de Equipe, Criação de Usuários & Níveis de Acesso
+                  </CardTitle>
+                  <CardDescription className="text-xs">
+                    Como criar contas para seus colaboradores, definir permissões de Gestor vs Operador e garantir segurança operacional.
+                  </CardDescription>
+                </div>
+              </div>
+            </CardHeader>
+
+            <CardContent className="pt-6 flex flex-col gap-6">
+              {/* Passo a Passo de Criação */}
+              <div className="flex flex-col gap-4 rounded-xl border border-border/80 bg-sidebar/40 p-5">
+                <div className="flex items-center justify-between">
+                  <div className="flex items-center gap-3">
+                    <div className="p-2 rounded-lg bg-primary/10 text-primary">
+                      <UserPlus className="size-5" />
+                    </div>
+                    <div>
+                      <h3 className="text-base font-bold text-foreground">Como Cadastrar um Novo Usuário no Hub Gestor</h3>
+                      <p className="text-xs text-muted-foreground">Adicione membros do seu time com credenciais de login e senhas individuais</p>
+                    </div>
+                  </div>
+                  <Badge variant="outline" className="border-primary/30 text-primary bg-primary/10 text-xs">
+                    Menu /equipe
+                  </Badge>
+                </div>
+
+                <div className="text-xs text-muted-foreground space-y-2 border-t border-border/50 pt-3">
+                  <ol className="list-decimal list-inside space-y-2 pl-1 leading-relaxed">
+                    <li>No menu lateral, clique em <strong>Equipe &amp; Usuários</strong> (ou acesse a rota <code>/equipe</code>).</li>
+                    <li>No topo da tela, clique no botão <strong>"Novo Usuário"</strong> para abrir o modal de cadastro.</li>
+                    <li>
+                      Preencha os dados do colaborador:
+                      <ul className="list-disc list-inside pl-4 mt-1 space-y-1 text-foreground/90">
+                        <li><strong>Nome Completo</strong>: Identificação visual no cabeçalho e histórico de edição.</li>
+                        <li><strong>Nome de Usuário (Login)</strong>: Login único (ex: <code>joao.silva</code> ou <code>joao@empresa.com.br</code>).</li>
+                        <li><strong>E-mail</strong>: E-mail corporativo do usuário para comunicações do sistema.</li>
+                        <li><strong>Senha Inicial</strong>: Senha de acesso com a qual o usuário fará o primeiro login.</li>
+                        <li><strong>Perfil de Acesso</strong>: Selecione <em>Gestor da Loja</em> ou <em>Operador</em>.</li>
+                      </ul>
+                    </li>
+                    <li>Clique em <strong>"Criar Usuário"</strong>. O acesso é liberado instantaneamente.</li>
+                  </ol>
+                </div>
+              </div>
+
+              {/* Comparativo de Perfis de Acesso */}
+              <div className="grid gap-4 md:grid-cols-2">
+                <div className="p-4 rounded-xl border border-primary/30 bg-primary/5 flex flex-col gap-3">
+                  <div className="flex items-center justify-between">
+                    <span className="font-bold text-sm text-foreground flex items-center gap-1.5">
+                      <Shield className="size-4 text-primary" /> Perfil: Gestor da Loja (Manager)
+                    </span>
+                    <Badge variant="default" className="text-[10px]">Acesso Total</Badge>
+                  </div>
+                  <p className="text-xs text-muted-foreground leading-relaxed">
+                    Ideal para sócios, diretores e gerentes de e-commerce. Permite:
+                  </p>
+                  <ul className="text-xs space-y-1 text-muted-foreground list-disc list-inside">
+                    <li>Visualização completa do <strong>Dashboard &amp; KPIs Financeiros</strong>;</li>
+                    <li>Configuração de <strong>Conexões ERP, Chaves de API e Webhooks</strong>;</li>
+                    <li>Instalação e ativação de <strong>Plugins de Marketplace</strong>;</li>
+                    <li>Ajuste das <strong>Frequências de Busca Automática (Cron)</strong>;</li>
+                    <li>Criação, ativação e exclusão de outros <strong>Usuários da Equipe</strong>.</li>
+                  </ul>
+                </div>
+
+                <div className="p-4 rounded-xl border border-border bg-sidebar/50 flex flex-col gap-3">
+                  <div className="flex items-center justify-between">
+                    <span className="font-bold text-sm text-foreground flex items-center gap-1.5">
+                      <Users className="size-4 text-sky-400" /> Perfil: Operador (Operator)
+                    </span>
+                    <Badge variant="secondary" className="text-[10px]">Operacional</Badge>
+                  </div>
+                  <p className="text-xs text-muted-foreground leading-relaxed">
+                    Ideal para operadores de estoque, SAC e faturamento. Permite:
+                  </p>
+                  <ul className="text-xs space-y-1 text-muted-foreground list-disc list-inside">
+                    <li>Consulta e acompanhamento da <strong>Fila de Pedidos (/pedidos)</strong>;</li>
+                    <li>Abertura e correção de pedidos pendentes no <strong>Formulário e JSON</strong>;</li>
+                    <li>Consulta ao <strong>Catálogo de Produtos &amp; Saldos de Estoque</strong>;</li>
+                    <li>Visualização da <strong>Esteira de Lotes de Produtos</strong>;</li>
+                    <li><em>(Bloqueado para alterar credenciais de ERPs e configurações do Hub)</em>.</li>
+                  </ul>
+                </div>
+              </div>
+
+              {/* Boas Práticas & Segurança */}
+              <div className="p-4 rounded-xl border border-border bg-card flex flex-col gap-2">
+                <h4 className="text-sm font-bold text-foreground flex items-center gap-2">
+                  <ShieldCheck className="size-4 text-emerald-400" /> Isolamento Multi-Tenant &amp; Desativação Rápida
+                </h4>
+                <p className="text-xs text-muted-foreground leading-relaxed">
+                  Todos os usuários criados ficam estritamente vinculados ao identificador exclusivo da sua empresa (<strong>Tenant ID</strong>). Em caso de desligamento de colaborador ou troca de função, o gestor pode clicar em <strong>"Desativar"</strong> na tabela para bloquear imediatamente o acesso à conta sem perder o histórico dos pedidos atendidos.
+                </p>
               </div>
             </CardContent>
           </Card>
