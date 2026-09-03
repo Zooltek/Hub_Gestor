@@ -17,7 +17,7 @@ export function SalesOverviewCards({ kpis, periodLabel = "vs. período anterior"
       previousValue: formatCurrency(kpis.revenue.previous),
       change: kpis.revenue.changePercent,
       icon: DollarSign,
-      color: "text-emerald-400 bg-emerald-500/10 border-emerald-500/20",
+      color: "text-emerald-600 dark:text-emerald-400 bg-emerald-500/10 border-emerald-500/20",
     },
     {
       title: "Total de Pedidos",
@@ -25,7 +25,7 @@ export function SalesOverviewCards({ kpis, periodLabel = "vs. período anterior"
       previousValue: formatNumber(kpis.orders.previous),
       change: kpis.orders.changePercent,
       icon: ShoppingCart,
-      color: "text-sky-400 bg-sky-500/10 border-sky-500/20",
+      color: "text-sky-600 dark:text-sky-400 bg-sky-500/10 border-sky-500/20",
     },
     {
       title: "Itens Vendidos",
@@ -33,7 +33,7 @@ export function SalesOverviewCards({ kpis, periodLabel = "vs. período anterior"
       previousValue: formatNumber(kpis.itemsSold.previous),
       change: kpis.itemsSold.changePercent,
       icon: Package,
-      color: "text-purple-400 bg-purple-500/10 border-purple-500/20",
+      color: "text-purple-600 dark:text-purple-400 bg-purple-500/10 border-purple-500/20",
     },
     {
       title: "Ticket Médio",
@@ -41,7 +41,7 @@ export function SalesOverviewCards({ kpis, periodLabel = "vs. período anterior"
       previousValue: formatCurrency(kpis.averageTicket.previous),
       change: kpis.averageTicket.changePercent,
       icon: TrendingUp,
-      color: "text-amber-400 bg-amber-500/10 border-amber-500/20",
+      color: "text-amber-600 dark:text-amber-400 bg-amber-500/10 border-amber-500/20",
     },
   ];
 
@@ -70,23 +70,25 @@ export function SalesOverviewCards({ kpis, periodLabel = "vs. período anterior"
                 </span>
               </div>
 
-              <div className="mt-2 flex items-center justify-between text-xs">
-                <div className="flex items-center gap-1.5">
-                  <Badge
-                    variant={isPositive ? "success" : isNegative ? "destructive" : "secondary"}
-                    className="px-1.5 py-0 text-[11px] font-medium"
-                  >
-                    {isPositive && <TrendingUp className="size-3 mr-0.5 inline" />}
-                    {isNegative && <TrendingDown className="size-3 mr-0.5 inline" />}
-                    {!isPositive && !isNegative && <Minus className="size-3 mr-0.5 inline" />}
-                    {formatPercent(item.change)}
-                  </Badge>
-                  <span className="text-muted-foreground text-[11px]">{periodLabel}</span>
+              {item.previousValue !== formatCurrency(0) && item.previousValue !== formatNumber(0) && item.previousValue !== "0" && item.previousValue !== "R$ 0,00" && (
+                <div className="mt-2 flex items-center justify-between text-xs">
+                  <div className="flex items-center gap-1.5">
+                    <Badge
+                      variant={isPositive ? "success" : isNegative ? "destructive" : "secondary"}
+                      className="px-1.5 py-0 text-[11px] font-medium"
+                    >
+                      {isPositive && <TrendingUp className="size-3 mr-0.5 inline" />}
+                      {isNegative && <TrendingDown className="size-3 mr-0.5 inline" />}
+                      {!isPositive && !isNegative && <Minus className="size-3 mr-0.5 inline" />}
+                      {formatPercent(item.change)}
+                    </Badge>
+                    <span className="text-muted-foreground text-[11px]">{periodLabel}</span>
+                  </div>
+                  <span className="text-muted-foreground/70 text-[11px]">
+                    Ant: {item.previousValue}
+                  </span>
                 </div>
-                <span className="text-muted-foreground/70 text-[11px]">
-                  Ant: {item.previousValue}
-                </span>
-              </div>
+              )}
             </CardContent>
           </Card>
         );

@@ -9,12 +9,19 @@ import { ShoppingBag, PackageX } from "lucide-react";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
 import { formatCurrency } from "@/lib/utils";
 import type { ChannelPerformance } from "@/lib/api/types";
+import { useTheme } from "@/app/providers/theme-provider";
 
 interface ChannelDistributionChartProps {
   channels: ChannelPerformance[];
 }
 
 export function ChannelDistributionChart({ channels }: ChannelDistributionChartProps) {
+  const { resolvedTheme } = useTheme();
+  const isDark = resolvedTheme === "dark";
+  const tooltipBg = isDark ? "rgba(23, 23, 35, 0.95)" : "rgba(255, 255, 255, 0.98)";
+  const tooltipBorder = isDark ? "rgba(255, 255, 255, 0.15)" : "rgba(0, 0, 0, 0.12)";
+  const tooltipTextColor = isDark ? "#ffffff" : "#0f172a";
+
   const activeChannelsWithSales = channels.filter((c) => c.revenue > 0 || c.orders > 0);
   const hasSales = activeChannelsWithSales.length > 0;
 
@@ -26,18 +33,22 @@ export function ChannelDistributionChart({ channels }: ChannelDistributionChartP
           <span>Distribuição por Canal / Marketplace</span>
         </CardTitle>
         <CardDescription className="text-xs">
-          Pergunta 4: Onde e quando suas vendas mais acontecem
+          Onde e quando suas vendas mais acontecem
         </CardDescription>
       </CardHeader>
 
       <CardContent className="flex flex-col gap-4">
         {!hasSales ? (
-          <div className="py-10 flex flex-col items-center justify-center gap-2 text-center">
-            <PackageX className="size-8 text-muted-foreground/50" />
-            <p className="text-xs font-semibold text-foreground">Nenhuma venda registrada no período</p>
-            <p className="text-[11px] text-muted-foreground max-w-xs">
-              A distribuição por marketplace e horários de pico serão consolidados automaticamente assim que houver novos pedidos.
-            </p>
+          <div className="py-10 flex flex-col items-center justify-center gap-3 text-center">
+            <div className="p-4 rounded-2xl bg-primary/5 border border-primary/10">
+              <ShoppingBag className="size-8 text-primary/40" />
+            </div>
+            <div>
+              <p className="text-sm font-semibold text-foreground">Nenhuma venda registrada no período</p>
+              <p className="text-xs text-muted-foreground mt-1 max-w-xs">
+                A distribuição por marketplace será consolidada automaticamente assim que houver novos pedidos.
+              </p>
+            </div>
           </div>
         ) : (
           <div className="flex flex-col md:flex-row items-center justify-between gap-4">
@@ -59,11 +70,16 @@ export function ChannelDistributionChart({ channels }: ChannelDistributionChartP
                   </Pie>
                   <Tooltip
                     contentStyle={{
-                      backgroundColor: "rgba(23, 23, 35, 0.95)",
-                      borderColor: "rgba(255,255,255,0.15)",
+                      backgroundColor: tooltipBg,
+                      borderColor: tooltipBorder,
+                      color: tooltipTextColor,
                       borderRadius: "8px",
                       fontSize: "12px",
+                      boxShadow: isDark
+                        ? "0 10px 25px -5px rgba(0,0,0,0.5)"
+                        : "0 10px 25px -5px rgba(0,0,0,0.1)",
                     }}
+                    itemStyle={{ color: tooltipTextColor }}
                     formatter={(val: any, name: any, item: any) => [
                       `${val}% (${formatCurrency(item.payload.revenue)})`,
                       item.payload.name,

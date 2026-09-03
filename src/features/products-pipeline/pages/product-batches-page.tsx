@@ -147,12 +147,12 @@ export function ProductBatchesPage() {
 
         <Card className="border-border/80">
           <CardContent className="p-4 flex items-center gap-3">
-            <div className="p-2.5 rounded-lg bg-emerald-500/10 text-emerald-400">
+            <div className="p-2.5 rounded-lg bg-emerald-500/10 text-emerald-600 dark:text-emerald-400">
               <CheckCircle className="size-5" />
             </div>
             <div>
               <p className="text-xs text-muted-foreground">Lotes com 100% Sucesso</p>
-              <p className="text-xl font-bold text-emerald-400">
+              <p className="text-xl font-bold text-emerald-600 dark:text-emerald-400">
                 {batches.filter((b) => b.errorItems === 0).length}
               </p>
             </div>
@@ -161,12 +161,12 @@ export function ProductBatchesPage() {
 
         <Card className="border-border/80">
           <CardContent className="p-4 flex items-center gap-3">
-            <div className="p-2.5 rounded-lg bg-amber-500/10 text-amber-400">
+            <div className="p-2.5 rounded-lg bg-amber-500/10 text-amber-600 dark:text-amber-400">
               <AlertTriangle className="size-5" />
             </div>
             <div>
               <p className="text-xs text-muted-foreground">Lotes com Alertas/Erros</p>
-              <p className="text-xl font-bold text-amber-400">
+              <p className="text-xl font-bold text-amber-600 dark:text-amber-400">
                 {batches.filter((b) => b.errorItems > 0).length}
               </p>
             </div>
@@ -218,12 +218,12 @@ export function ProductBatchesPage() {
                     <TableCell className="text-center font-medium text-xs">
                       {batch.totalItems}
                     </TableCell>
-                    <TableCell className="text-center text-xs font-semibold text-emerald-400">
+                    <TableCell className="text-center text-xs font-semibold text-emerald-600 dark:text-emerald-400">
                       {batch.successItems}
                     </TableCell>
                     <TableCell className="text-center text-xs">
                       {batch.errorItems > 0 ? (
-                        <span className="font-bold text-amber-400">{batch.errorItems}</span>
+                        <span className="font-bold text-amber-600 dark:text-amber-400">{batch.errorItems}</span>
                       ) : (
                         <span className="text-muted-foreground">0</span>
                       )}
@@ -287,32 +287,32 @@ export function ProductBatchesPage() {
                   <p className="text-base font-bold text-foreground">{selectedBatch.totalItems}</p>
                 </div>
                 <div className="rounded-lg bg-emerald-500/10 p-2.5 border border-emerald-500/20">
-                  <p className="text-emerald-300 text-[11px]">Processados OK</p>
-                  <p className="text-base font-bold text-emerald-400">{selectedBatch.successItems}</p>
+                  <p className="text-emerald-700 dark:text-emerald-300 text-[11px] font-medium">Processados OK</p>
+                  <p className="text-base font-bold text-emerald-600 dark:text-emerald-400">{selectedBatch.successItems}</p>
                 </div>
                 <div className="rounded-lg bg-amber-500/10 p-2.5 border border-amber-500/20">
-                  <p className="text-amber-300 text-[11px]">Com Erro</p>
-                  <p className="text-base font-bold text-amber-400">{selectedBatch.errorItems}</p>
+                  <p className="text-amber-700 dark:text-amber-300 text-[11px] font-medium">Com Erro</p>
+                  <p className="text-base font-bold text-amber-600 dark:text-amber-400">{selectedBatch.errorItems}</p>
                 </div>
               </div>
 
               {selectedBatch.errorLog && selectedBatch.errorLog.length > 0 ? (
                 <div className="flex flex-col gap-2 mt-2">
-                  <p className="font-semibold text-amber-300 flex items-center gap-1.5">
-                    <AlertTriangle className="size-4 text-amber-400" />
+                  <p className="font-semibold text-amber-700 dark:text-amber-300 flex items-center gap-1.5">
+                    <AlertTriangle className="size-4 text-amber-500 dark:text-amber-400" />
                     Itens com Rejeição de Validação
                   </p>
                   <div className="rounded-lg bg-card border border-border/80 divide-y divide-border/50 p-2 font-mono text-[11px] text-muted-foreground">
                     {selectedBatch.errorLog.map((err, i) => (
-                      <div key={i} className="py-1.5 text-amber-200">
+                      <div key={i} className="py-1.5 text-amber-800 dark:text-amber-200">
                         • {err}
                       </div>
                     ))}
                   </div>
                 </div>
               ) : (
-                <div className="flex items-center gap-2 p-3 rounded-lg bg-emerald-500/10 text-emerald-300 border border-emerald-500/20">
-                  <CheckCircle className="size-4 text-emerald-400 shrink-0" />
+                <div className="flex items-center gap-2 p-3 rounded-lg bg-emerald-500/10 text-emerald-700 dark:text-emerald-300 border border-emerald-500/20">
+                  <CheckCircle className="size-4 text-emerald-600 dark:text-emerald-400 shrink-0" />
                   <span>Todos os SKUs deste lote foram sincronizados com sucesso no marketplace!</span>
                 </div>
               )}

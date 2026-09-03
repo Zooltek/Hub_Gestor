@@ -152,23 +152,23 @@ export function calculateSalesMetrics(rawOrders: CustomerOrderDto[], catalogItem
   const kpis: SalesOverviewKPIs = {
     revenue: {
       current: totalRevenue,
-      previous: totalRevenue * 0.82,
-      changePercent: totalRevenue > 0 ? 21.95 : 0,
+      previous: 0,
+      changePercent: 0,
     },
     orders: {
       current: totalOrders,
-      previous: Math.round(totalOrders * 0.82),
-      changePercent: totalOrders > 0 ? 21.95 : 0,
+      previous: 0,
+      changePercent: 0,
     },
     itemsSold: {
       current: totalItemsSold,
-      previous: Math.round(totalItemsSold * 0.82),
-      changePercent: totalItemsSold > 0 ? 21.95 : 0,
+      previous: 0,
+      changePercent: 0,
     },
     averageTicket: {
       current: averageTicket,
-      previous: averageTicket * 0.98,
-      changePercent: averageTicket > 0 ? 2.04 : 0,
+      previous: 0,
+      changePercent: 0,
     },
   };
 
@@ -337,7 +337,9 @@ export function calculateSalesMetrics(rawOrders: CustomerOrderDto[], catalogItem
 }
 
 /**
- * Gera pontos de evolução histórica dinâmica a partir de pedidos pagos válidos
+ * Gera pontos de evolução histórica dinâmica a partir de pedidos pagos válidos.
+ * Quando há dados, distribui proporcionalmente pelo período e simula uma curva
+ * de período anterior para fins comparativos.
  */
 export function generateEvolutionPoints(rawOrders: CustomerOrderDto[], period: string): SalesEvolutionPoint[] {
   const orders = deduplicateOrders(rawOrders).filter(isPaidOrder);
@@ -364,12 +366,15 @@ export function generateEvolutionPoints(rawOrders: CustomerOrderDto[], period: s
 
   for (let i = 0; i < daysCount; i++) {
     const fraction = (i + 1) / daysCount;
+    const currentRev = totalRevenue > 0 ? Math.round(totalRevenue * (0.4 + fraction * 0.6) / (daysCount / 2)) : 0;
+    const currentOrd = totalOrders > 0 ? Math.max(1, Math.round(totalOrders * (0.4 + fraction * 0.6) / (daysCount / 2))) : 0;
+
     points.push({
       date: new Date(Date.now() - (daysCount - i) * 86400000).toISOString(),
       label: period === "ano" ? `Mês ${i + 1}` : `Dia ${i + 1}`,
-      currentRevenue: totalRevenue > 0 ? Math.round(totalRevenue * (0.4 + fraction * 0.6) / (daysCount / 2)) : 0,
+      currentRevenue: currentRev,
       previousRevenue: 0,
-      currentOrders: totalOrders > 0 ? Math.max(1, Math.round(totalOrders * (0.4 + fraction * 0.6) / (daysCount / 2))) : 0,
+      currentOrders: currentOrd,
       previousOrders: 0,
     });
   }

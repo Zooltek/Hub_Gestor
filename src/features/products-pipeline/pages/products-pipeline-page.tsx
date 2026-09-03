@@ -162,12 +162,12 @@ export function ProductsPipelinePage() {
                       <TableCell className="text-center font-medium text-xs">
                         {batch.totalItems}
                       </TableCell>
-                      <TableCell className="text-center text-xs font-semibold text-emerald-400">
+                      <TableCell className="text-center text-xs font-semibold text-emerald-600 dark:text-emerald-400">
                         {batch.successItems}
                       </TableCell>
                       <TableCell className="text-center text-xs">
                         {batch.errorItems > 0 ? (
-                          <span className="font-bold text-amber-400">{batch.errorItems}</span>
+                          <span className="font-bold text-amber-600 dark:text-amber-400">{batch.errorItems}</span>
                         ) : (
                           <span className="text-muted-foreground">0</span>
                         )}

@@ -334,12 +334,12 @@ export function ProductImportBatchPage() {
 
         <Card className="border-border/80">
           <CardContent className="p-3 flex items-center gap-2.5">
-            <div className="p-2 rounded-lg bg-emerald-500/10 text-emerald-400">
+            <div className="p-2 rounded-lg bg-emerald-500/10 text-emerald-600 dark:text-emerald-400">
               <CheckCircle className="size-4" />
             </div>
             <div>
               <p className="text-[11px] text-muted-foreground">Prontos / Aprovados</p>
-              <p className="text-base font-bold text-emerald-400">
+              <p className="text-base font-bold text-emerald-600 dark:text-emerald-400">
                 {items.filter((i) => i.statusLabel === "Aprovado" || i.statusLabel === "Despachado" || i.statusLabel === "Sem alteração").length}
               </p>
             </div>
@@ -348,12 +348,12 @@ export function ProductImportBatchPage() {
 
         <Card className="border-border/80">
           <CardContent className="p-3 flex items-center gap-2.5">
-            <div className="p-2 rounded-lg bg-amber-500/10 text-amber-400">
+            <div className="p-2 rounded-lg bg-amber-500/10 text-amber-600 dark:text-amber-400">
               <AlertTriangle className="size-4" />
             </div>
             <div>
               <p className="text-[11px] text-muted-foreground">Pendentes de Revisão</p>
-              <p className="text-base font-bold text-amber-400">
+              <p className="text-base font-bold text-amber-600 dark:text-amber-400">
                 {items.filter((i) => i.requiresReview || i.statusLabel === "Pendente").length}
               </p>
             </div>
@@ -362,12 +362,12 @@ export function ProductImportBatchPage() {
 
         <Card className="border-border/80">
           <CardContent className="p-3 flex items-center gap-2.5">
-            <div className="p-2 rounded-lg bg-rose-500/10 text-rose-400">
+            <div className="p-2 rounded-lg bg-rose-500/10 text-rose-600 dark:text-rose-400">
               <XCircle className="size-4" />
             </div>
             <div>
               <p className="text-[11px] text-muted-foreground">Erros / Bloqueados</p>
-              <p className="text-base font-bold text-rose-400">
+              <p className="text-base font-bold text-rose-600 dark:text-rose-400">
                 {items.filter((i) => i.statusLabel === "Erro" || i.statusLabel === "Rejeitado").length}
               </p>
             </div>
@@ -658,8 +658,8 @@ export function ProductImportBatchPage() {
                         {inspectedItem.diff.map((d, i) => (
                           <TableRow key={i}>
                             <TableCell className="font-semibold text-xs text-foreground">{d.field}</TableCell>
-                            <TableCell className="text-xs text-rose-400 bg-rose-500/5 font-mono">{d.oldValue || "-"}</TableCell>
-                            <TableCell className="text-xs text-emerald-400 bg-emerald-500/5 font-mono">{d.newValue || "-"}</TableCell>
+                            <TableCell className="text-xs text-rose-600 dark:text-rose-400 bg-rose-500/5 font-mono">{d.oldValue || "-"}</TableCell>
+                            <TableCell className="text-xs text-emerald-600 dark:text-emerald-400 bg-emerald-500/5 font-mono">{d.newValue || "-"}</TableCell>
                           </TableRow>
                         ))}
                       </TableBody>
@@ -667,7 +667,7 @@ export function ProductImportBatchPage() {
                   </div>
                 ) : (
                   <div className="p-8 text-center text-muted-foreground flex flex-col items-center justify-center gap-2">
-                    <CheckCircle className="size-7 text-emerald-400" />
+                    <CheckCircle className="size-7 text-emerald-600 dark:text-emerald-400" />
                     <p className="text-xs font-semibold text-foreground">Nenhuma divergência detectada</p>
                     <p className="text-[11px]">Os dados deste produto no arquivo importado são idênticos aos cadastrados no catálogo do Hub.</p>
                   </div>
@@ -683,7 +683,7 @@ export function ProductImportBatchPage() {
                   </pre>
                 </div>
                 <div className="flex flex-col gap-1.5">
-                  <span className="text-xs font-semibold text-emerald-400">Snapshot Recebido (Novo Arquivo)</span>
+                  <span className="text-xs font-semibold text-emerald-600 dark:text-emerald-400">Snapshot Recebido (Novo Arquivo)</span>
                   <pre className="p-3 rounded-lg bg-black/60 border border-emerald-500/30 text-[11px] font-mono text-emerald-300 overflow-x-auto h-64">
                     {JSON.stringify(inspectedItem.incomingSnapshot || inspectedItem.rawJson || {}, null, 2)}
                   </pre>

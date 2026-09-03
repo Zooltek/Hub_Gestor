@@ -114,14 +114,14 @@ export function DashboardPage() {
     },
     productSync: {
       status: "healthy",
-      lastBatchUtc: batches[0]?.startedAtUtc || new Date().toISOString(),
+      lastBatchUtc: batches[0]?.startedAtUtc || "",
       totalBatches24h: batches.length,
       successBatches24h: batches.length,
       errorBatches24h: 0,
     },
     orderSync: {
       status: "healthy",
-      lastOrderUtc: orders[0]?.createdAtUtc || new Date().toISOString(),
+      lastOrderUtc: orders[0]?.createdAtUtc || "",
       totalOrders24h: orders.length,
       pendingErpDownload: 0,
       failedIntegration: 0,
@@ -172,38 +172,26 @@ export function DashboardPage() {
         </div>
       </div>
 
-      {/* Pergunta 1: Quanto estou vendendo? */}
+      {/* Cards de Métricas Gerais */}
       <section className="flex flex-col gap-2">
-        <div className="flex items-center justify-between">
-          <h2 className="text-xs font-semibold text-muted-foreground uppercase tracking-wider">
-            1. Quanto estou vendendo?
-          </h2>
-        </div>
         <SalesOverviewCards kpis={kpis} />
       </section>
 
-      {/* Camada Principal: Evolução (Pergunta 2) e Saúde (Pergunta 3) */}
+      {/* Camada Principal: Evolução e Saúde */}
       <section className="grid gap-6 xl:grid-cols-12">
-        {/* Pergunta 2: Como minhas vendas estão evoluindo? */}
         <SalesEvolutionChart
           data={evolutionData}
           period={period}
           onPeriodChange={setPeriod}
         />
 
-        {/* Pergunta 3: Está tudo funcionando? */}
         <IntegrationHealthWidget health={health || defaultHealth} />
       </section>
 
-      {/* Camada Secundária (Pergunta 4): O que está se destacando? */}
-      <section className="flex flex-col gap-2">
-        <h2 className="text-xs font-semibold text-muted-foreground uppercase tracking-wider">
-          4. O que está se destacando?
-        </h2>
-        <div className="grid gap-6 xl:grid-cols-12">
-          <TopProductsWidget products={topProducts} />
-          <ChannelDistributionChart channels={channels} />
-        </div>
+      {/* Camada Secundária: Produtos e Canais */}
+      <section className="grid gap-6 xl:grid-cols-12">
+        <TopProductsWidget products={topProducts} />
+        <ChannelDistributionChart channels={channels} />
       </section>
     </div>
   );

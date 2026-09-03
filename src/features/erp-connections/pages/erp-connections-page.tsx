@@ -774,7 +774,7 @@ export function ErpConnectionsPage() {
                           variant={isEnabled ? "ghost" : "outline"}
                           size="sm"
                           onClick={() => handleTogglePlugin(plugin)}
-                          className={`h-8 text-xs gap-1 ${isEnabled ? "text-amber-400 hover:text-amber-300 hover:bg-amber-500/10" : "text-emerald-400"}`}
+                          className={`h-8 text-xs gap-1 ${isEnabled ? "text-amber-600 dark:text-amber-400 hover:text-amber-700 dark:hover:text-amber-300 hover:bg-amber-500/10" : "text-emerald-600 dark:text-emerald-400"}`}
                           title={isEnabled ? "Pausar Plugin" : "Ativar Plugin"}
                         >
                           <Power className="size-3.5" />
@@ -785,7 +785,7 @@ export function ErpConnectionsPage() {
                           variant="ghost"
                           size="icon"
                           onClick={() => handleUninstallPlugin(plugin)}
-                          className="size-8 text-rose-400 hover:text-rose-300 hover:bg-rose-500/10"
+                          className="size-8 text-rose-600 dark:text-rose-400 hover:text-rose-700 dark:hover:text-rose-300 hover:bg-rose-500/10"
                           title="Desinstalar Plugin"
                         >
                           <Trash2 className="size-3.5" />
@@ -970,7 +970,7 @@ export function ErpConnectionsPage() {
               ]).map((field) => (
                 <div key={field.id} className="flex flex-col gap-1.5">
                   <label className="font-semibold text-foreground flex items-center justify-between">
-                    <span>{field.label} {field.required && <span className="text-rose-400">*</span>}</span>
+                    <span>{field.label} {field.required && <span className="text-rose-600 dark:text-rose-400">*</span>}</span>
                   </label>
                   <Input
                     type={field.type || "text"}

@@ -117,7 +117,7 @@ export function HealthPage() {
             </div>
             <div className="flex justify-between py-1 border-b border-border/50">
               <span className="text-muted-foreground">Latência Real:</span>
-              <span className="font-mono font-bold text-emerald-400">
+              <span className="font-mono font-bold text-emerald-600 dark:text-emerald-400">
                 {latency !== null ? `${latency} ms` : "Medindo..."}
               </span>
             </div>
@@ -127,7 +127,7 @@ export function HealthPage() {
             </div>
             <div className="flex justify-between py-1">
               <span className="text-muted-foreground">Status /alive:</span>
-              <span className="font-bold text-emerald-400">HTTP 200 OK</span>
+              <span className="font-bold text-emerald-600 dark:text-emerald-400">HTTP 200 OK</span>
             </div>
           </CardContent>
         </Card>
@@ -138,7 +138,7 @@ export function HealthPage() {
           <CardHeader className="pb-3">
             <div className="flex items-center justify-between">
               <CardTitle className="text-base flex items-center gap-2">
-                <Globe className="size-4 text-emerald-400" />
+                <Globe className="size-4 text-emerald-600 dark:text-emerald-400" />
                 <span>API REST do ERP</span>
               </CardTitle>
               <Badge variant="success" className="text-[10px]">Conectado</Badge>
@@ -158,7 +158,7 @@ export function HealthPage() {
             </div>
             <div className="flex justify-between py-1 border-b border-border/50">
               <span className="text-muted-foreground">Sincronização:</span>
-              <span className="text-emerald-400 font-medium">Automática Ativa</span>
+              <span className="text-emerald-600 dark:text-emerald-400 font-medium">Automática Ativa</span>
             </div>
             <div className="flex justify-between py-1">
               <span className="text-muted-foreground">Conexão:</span>
@@ -173,7 +173,7 @@ export function HealthPage() {
           <CardHeader className="pb-3">
             <div className="flex items-center justify-between">
               <CardTitle className="text-base flex items-center gap-2">
-                <Cloud className="size-4 text-sky-400" />
+                <Cloud className="size-4 text-sky-600 dark:text-sky-400" />
                 <span>Canais Integrados</span>
               </CardTitle>
               <Badge variant="success" className="text-[10px]">Online</Badge>
@@ -185,14 +185,14 @@ export function HealthPage() {
           <CardContent className="flex flex-col gap-2.5 text-xs">
             <div className="flex justify-between py-1 border-b border-border/50">
               <span className="text-muted-foreground">Mercado Livre:</span>
-              <span className="text-emerald-400 font-semibold flex items-center gap-1">
+              <span className="text-emerald-600 dark:text-emerald-400 font-semibold flex items-center gap-1">
                 <span className="size-1.5 rounded-full bg-emerald-500" />
                 Ativo
               </span>
             </div>
             <div className="flex justify-between py-1 border-b border-border/50">
               <span className="text-muted-foreground">Shopify Store:</span>
-              <span className="text-emerald-400 font-semibold flex items-center gap-1">
+              <span className="text-emerald-600 dark:text-emerald-400 font-semibold flex items-center gap-1">
                 <span className="size-1.5 rounded-full bg-emerald-500" />
                 Ativo
               </span>
@@ -203,7 +203,7 @@ export function HealthPage() {
             </div>
             <div className="flex justify-between py-1">
               <span className="text-muted-foreground">OAuth Tokens:</span>
-              <span className="text-emerald-400 font-medium">Válidos</span>
+              <span className="text-emerald-600 dark:text-emerald-400 font-medium">Válidos</span>
             </div>
           </CardContent>
         </Card>
@@ -231,8 +231,8 @@ export function HealthPage() {
                   log.type === "gateway"
                     ? "bg-primary/20 text-primary"
                     : log.type === "erp"
-                    ? "bg-emerald-500/20 text-emerald-400"
-                    : "bg-sky-500/20 text-sky-400"
+                    ? "bg-emerald-500/20 text-emerald-600 dark:text-emerald-400"
+                    : "bg-sky-500/20 text-sky-600 dark:text-sky-400"
                 }`}
               >
                 {log.type}

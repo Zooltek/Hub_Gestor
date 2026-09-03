@@ -12,7 +12,7 @@ interface IntegrationHealthWidgetProps {
 
 export function IntegrationHealthWidget({ health }: IntegrationHealthWidgetProps) {
   return (
-    <Card className="col-span-full xl:col-span-4 border-border/80">
+    <Card className="col-span-full xl:col-span-5 border-border/80">
       <CardHeader className="pb-3">
         <div className="flex items-center justify-between">
           <CardTitle className="text-base flex items-center gap-2">
@@ -27,7 +27,7 @@ export function IntegrationHealthWidget({ health }: IntegrationHealthWidgetProps
           </Badge>
         </div>
         <CardDescription className="text-xs">
-          Pergunta 3: Está tudo funcionando? Status de ERP Online, Lotes e Pedidos
+          Status de ERP Online, Lotes e Pedidos em tempo real
         </CardDescription>
       </CardHeader>
 
@@ -37,7 +37,7 @@ export function IntegrationHealthWidget({ health }: IntegrationHealthWidgetProps
           {/* Online Cloud ERP via API REST */}
           <div className="flex items-center justify-between rounded-lg border border-border/60 bg-muted/20 p-3">
             <div className="flex items-center gap-3">
-              <div className="p-2 rounded-lg bg-purple-500/10 text-purple-400">
+              <div className="p-2 rounded-lg bg-purple-500/10 text-purple-600 dark:text-purple-400">
                 <Globe className="size-4" />
               </div>
               <div>
@@ -48,7 +48,7 @@ export function IntegrationHealthWidget({ health }: IntegrationHealthWidgetProps
               </div>
             </div>
             <div className="text-right">
-              <span className="text-xs font-medium text-emerald-400">
+              <span className="text-xs font-medium text-emerald-600 dark:text-emerald-400">
                 Conectado
               </span>
               <p className="text-[10px] text-muted-foreground/80">
@@ -60,7 +60,7 @@ export function IntegrationHealthWidget({ health }: IntegrationHealthWidgetProps
           {/* Product Batches */}
           <div className="flex items-center justify-between rounded-lg border border-border/60 bg-muted/20 p-3">
             <div className="flex items-center gap-3">
-              <div className="p-2 rounded-lg bg-sky-500/10 text-sky-400">
+              <div className="p-2 rounded-lg bg-sky-500/10 text-sky-600 dark:text-sky-400">
                 <RefreshCw className="size-4" />
               </div>
               <div>
@@ -81,7 +81,7 @@ export function IntegrationHealthWidget({ health }: IntegrationHealthWidgetProps
                 </Badge>
               )}
               <p className="text-[10px] text-muted-foreground/80 mt-0.5">
-                Último: {formatDateTime(health.productSync.lastBatchUtc)}
+                {health.productSync.lastBatchUtc ? `Último: ${formatDateTime(health.productSync.lastBatchUtc)}` : "Sem registros"}
               </p>
             </div>
           </div>
@@ -89,7 +89,7 @@ export function IntegrationHealthWidget({ health }: IntegrationHealthWidgetProps
           {/* Order Sync */}
           <div className="flex items-center justify-between rounded-lg border border-border/60 bg-muted/20 p-3">
             <div className="flex items-center gap-3">
-              <div className="p-2 rounded-lg bg-emerald-500/10 text-emerald-400">
+              <div className="p-2 rounded-lg bg-emerald-500/10 text-emerald-600 dark:text-emerald-400">
                 <CheckCircle2 className="size-4" />
               </div>
               <div>
@@ -110,7 +110,7 @@ export function IntegrationHealthWidget({ health }: IntegrationHealthWidgetProps
                 </Badge>
               )}
               <p className="text-[10px] text-muted-foreground/80 mt-0.5">
-                Último: {formatDateTime(health.orderSync.lastOrderUtc)}
+                {health.orderSync.lastOrderUtc ? `Último: ${formatDateTime(health.orderSync.lastOrderUtc)}` : "Sem registros"}
               </p>
             </div>
           </div>
